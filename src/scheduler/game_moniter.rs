@@ -45,8 +45,25 @@ impl GameMoniter {
     }
 
     pub fn start_loop(&mut self) {
+        let mut last_error = None;
         loop {
-            let current_window = utils::get_now_top_window_pkg_name();
+            let current_window = match utils::get_now_top_window_pkg_name() {
+                Ok(window) => {
+                    last_error = None;
+                    window
+                }
+                Err(error) => {
+                    let message = error.to_string();
+                    if last_error.as_deref() != Some(message.as_str()) {
+                        if let Ok(mut log) = self.logger_handle.lock() {
+                            log.warn(format!("读取前台窗口失败，保留当前游戏状态: {message}"));
+                        }
+                        last_error = Some(message);
+                    }
+                    std::thread::sleep(Duration::from_secs(5));
+                    continue;
+                }
+            };
             let matched_entry = state::is_whitelisted(&current_window, &self.game_list);
             let current = matched_entry.is_some();
             let current_profile = state::game_profile_index(matched_entry);

@@ -1,6 +1,7 @@
 use std::{
+    fs,
     sync::{Arc, Mutex},
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 use crate::{
@@ -11,6 +12,20 @@ use crate::{
 pub struct LogConfigMonitor {
     config_path: String,
     logger_handle: Arc<Mutex<Logger>>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct ConfigStamp {
+    modified: SystemTime,
+    len: u64,
+}
+
+fn config_stamp(path: &str) -> std::io::Result<ConfigStamp> {
+    let metadata = fs::metadata(path)?;
+    Ok(ConfigStamp {
+        modified: metadata.modified()?,
+        len: metadata.len(),
+    })
 }
 
 impl LogConfigMonitor {
@@ -28,9 +43,26 @@ impl LogConfigMonitor {
             .map(|logger| logger.level())
             .unwrap_or(LogLevel::Info);
         let mut last_error = None;
+        let mut last_stamp = config_stamp(&self.config_path).ok();
 
         loop {
             std::thread::sleep(Duration::from_secs(1));
+
+            let stamp = match config_stamp(&self.config_path) {
+                Ok(stamp) if last_stamp == Some(stamp) => continue,
+                Ok(stamp) => stamp,
+                Err(error) => {
+                    let message = error.to_string();
+                    if last_error.as_deref() != Some(message.as_str()) {
+                        if let Ok(mut logger) = self.logger_handle.lock() {
+                            logger.warn(format!("读取日志配置状态失败: {message}"));
+                        }
+                        last_error = Some(message);
+                    }
+                    continue;
+                }
+            };
+            last_stamp = Some(stamp);
 
             let result = Config::new(&self.config_path).and_then(|config| {
                 LogLevel::parse(&config.log.level).ok_or_else(|| {

@@ -43,9 +43,26 @@ impl Moniter {
 
     pub fn start_loop(&mut self) {
         let mut previous_status = Some(self.onf.load(Ordering::Relaxed));
+        let mut last_error = None;
 
         loop {
-            let screen_status = utils::monitor_screen_status();
+            let screen_status = match utils::monitor_screen_status() {
+                Ok(status) => {
+                    last_error = None;
+                    status
+                }
+                Err(error) => {
+                    let message = error.to_string();
+                    if last_error.as_deref() != Some(message.as_str()) {
+                        if let Ok(mut log) = self.logger_handle.lock() {
+                            log.warn(format!("读取屏幕状态失败，保留当前状态: {message}"));
+                        }
+                        last_error = Some(message);
+                    }
+                    std::thread::sleep(Duration::from_secs(5));
+                    continue;
+                }
+            };
             let mode = data::RuntimeMode::from_index(self.mode.load(Ordering::Relaxed))
                 .unwrap_or(data::RuntimeMode::Power);
 

@@ -86,13 +86,41 @@ impl ModeSwitch {
     }
 
     pub fn start_loop(&mut self) {
-        let mut inotify = utils::inotify_init(&self.mode_path);
         let mut current = data::RuntimeMode::from_index(self.mode.load(Ordering::Relaxed));
         self.process_mode_file(&mut current);
+        let mut last_error = None;
 
         loop {
-            utils::inotify_blockage(&mut inotify);
-            self.process_mode_file(&mut current);
+            let mut inotify = match utils::inotify_init(&self.mode_path) {
+                Ok(inotify) => {
+                    last_error = None;
+                    inotify
+                }
+                Err(error) => {
+                    let message = error.to_string();
+                    if last_error.as_deref() != Some(message.as_str()) {
+                        if let Ok(mut log) = self.logger_handle.lock() {
+                            log.warn(format!("监听模式文件失败，将重试: {message}"));
+                        }
+                        last_error = Some(message);
+                    }
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                    self.process_mode_file(&mut current);
+                    continue;
+                }
+            };
+
+            loop {
+                match utils::inotify_blockage(&mut inotify) {
+                    Ok(()) => self.process_mode_file(&mut current),
+                    Err(error) => {
+                        if let Ok(mut log) = self.logger_handle.lock() {
+                            log.warn(format!("读取模式文件监听事件失败，将重试: {error}"));
+                        }
+                        break;
+                    }
+                }
+            }
         }
     }
 }

@@ -95,7 +95,9 @@ fn main() {
     handle_cli();
     install_signal_handlers();
     let mut log = logger::Logger::new(LOG_PATH);
-    log.clear();
+    if let Err(error) = log.start_session() {
+        eprintln!("初始化日志文件失败: {error}");
+    }
 
     let config = match data::Config::new(CONFIG_PATH) {
         Ok(config) => config,
@@ -144,8 +146,20 @@ fn main() {
             RuntimeMode::Power
         }
     };
-    let initial_screen_on = utils::monitor_screen_status();
-    let initial_window = utils::get_now_top_window_pkg_name();
+    let initial_screen_on = match utils::monitor_screen_status() {
+        Ok(screen_on) => screen_on,
+        Err(error) => {
+            log.warn(format!("读取初始屏幕状态失败，暂按亮屏处理: {error}"));
+            true
+        }
+    };
+    let initial_window = match utils::get_now_top_window_pkg_name() {
+        Ok(window) => window,
+        Err(error) => {
+            log.warn(format!("读取初始前台窗口失败: {error}"));
+            String::new()
+        }
+    };
     let initial_game_entry = state::is_whitelisted(&initial_window, &game_list);
     let initial_is_game = initial_game_entry.is_some();
     let initial_game_profile = state::game_profile_index(initial_game_entry);
