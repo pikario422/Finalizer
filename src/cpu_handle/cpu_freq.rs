@@ -82,7 +82,7 @@ pub struct CpuFreq {
 impl CpuFreq {
     pub fn new(
         config: data::Config,
-        logger_handle: Arc<Mutex<logger::Logger>>,
+        logger_handle: Arc<Mutex<crate::logger::Logger>>,
     ) -> io::Result<Self> {
         let result = utils::set_file_permissions_numeric(
             "/sys/devices/system/cpu/cpuidle/current_governor",
@@ -172,7 +172,7 @@ pub struct Policy {
 impl Policy {
     pub fn new(
         index: u32,
-        _logger_handle: Arc<Mutex<logger::Logger>>,
+        _logger_handle: Arc<Mutex<crate::logger::Logger>>,
     ) -> io::Result<Self> {
         let max_path = format!(
             "/sys/devices/system/cpu/cpufreq/policy{}/scaling_max_freq",

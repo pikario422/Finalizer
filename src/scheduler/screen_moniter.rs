@@ -16,7 +16,7 @@ use crate::{
 pub struct Moniter {
     onf: Arc<AtomicBool>,
     is_game: Arc<AtomicBool>,
-    logger_handle: Arc<Mutex<logger::Logger>>,
+    logger_handle: Arc<Mutex<crate::logger::Logger>>,
     mode: Arc<AtomicUsize>,
     tx: mpsc::Sender<manager::Event>,
 }
@@ -25,7 +25,7 @@ impl Moniter {
     pub fn new(
         onf: Arc<AtomicBool>,
         is_game: Arc<AtomicBool>,
-        logger_handle: Arc<Mutex<logger::Logger>>,
+        logger_handle: Arc<Mutex<crate::logger::Logger>>,
         mode: Arc<AtomicUsize>,
         tx: mpsc::Sender<manager::Event>,
     ) -> Self {

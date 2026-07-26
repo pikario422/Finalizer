@@ -19,7 +19,7 @@ pub struct GameMoniter {
     mode: Arc<AtomicUsize>,
     game_list: data::GameList,
     tx: mpsc::Sender<manager::Event>,
-    logger_handle: Arc<Mutex<logger::Logger>>,
+    logger_handle: Arc<Mutex<crate::logger::Logger>>,
 }
 
 impl GameMoniter {
@@ -28,7 +28,7 @@ impl GameMoniter {
         onf: Arc<AtomicBool>,
         mode: Arc<AtomicUsize>,
         game_list: data::GameList,
-        logger_handle: Arc<Mutex<logger::Logger>>,
+        logger_handle: Arc<Mutex<crate::logger::Logger>>,
         tx: mpsc::Sender<manager::Event>,
     ) -> Self {
         Self {

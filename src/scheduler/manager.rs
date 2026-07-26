@@ -17,14 +17,14 @@ pub enum Event {
 pub struct Manager {
     rx: mpsc::Receiver<Event>,
     cpu_freq_handle: CpuFreq,
-    logger_handle: Arc<Mutex<logger::Logger>>,
+    logger_handle: Arc<Mutex<crate::logger::Logger>>,
     config: data::Config,
 }
 
 impl Manager {
     pub fn new(
         rx: mpsc::Receiver<Event>,
-        logger_handle: Arc<Mutex<logger::Logger>>,
+        logger_handle: Arc<Mutex<crate::logger::Logger>>,
         config: data::Config,
     ) -> io::Result<Self> {
         let cpu_freq_handle = CpuFreq::new(config.clone(), logger_handle.clone())?;

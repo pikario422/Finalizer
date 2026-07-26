@@ -19,7 +19,7 @@ pub struct ModeSwitch {
     tx: mpsc::Sender<manager::Event>,
     onf: Arc<AtomicBool>,
     is_game: Arc<AtomicBool>,
-    logger_handle: Arc<Mutex<logger::Logger>>,
+    logger_handle: Arc<Mutex<crate::logger::Logger>>,
 }
 
 impl ModeSwitch {
@@ -27,7 +27,7 @@ impl ModeSwitch {
         mode_path: String,
         mode: Arc<AtomicUsize>,
         tx: mpsc::Sender<manager::Event>,
-        logger_handle: Arc<Mutex<logger::Logger>>,
+        logger_handle: Arc<Mutex<crate::logger::Logger>>,
         onf: Arc<AtomicBool>,
         is_game: Arc<AtomicBool>,
     ) -> Self {

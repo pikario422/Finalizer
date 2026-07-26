@@ -11,6 +11,7 @@ use finalizer::{
     config::data::{self, GameList, RuntimeMode},
     cpu_handle::cpu_stat::CpuStat,
     devices::touch,
+    logger,
     scheduler::{game_moniter, manager, mode_switch, screen_moniter, state},
     utils,
 };

@@ -31,7 +31,7 @@ pub fn open_devices(devices: &str) -> io::Result<OwnedFd> {
 
 pub struct Moniter {
     devices: OwnedFd,
-    logger_handle: Arc<Mutex<logger::Logger>>,
+    logger_handle: Arc<Mutex<crate::logger::Logger>>,
     config: data::Config,
     mode: Arc<AtomicUsize>,
     cpu_freq_handle: CpuFreq,
@@ -44,7 +44,7 @@ impl Moniter {
     pub fn new(
         devices: &str,
         tx: mpsc::Sender<Event>,
-        logger_handle: Arc<Mutex<logger::Logger>>,
+        logger_handle: Arc<Mutex<crate::logger::Logger>>,
         config: data::Config,
         mode: Arc<AtomicUsize>,
         onf: Arc<AtomicBool>,

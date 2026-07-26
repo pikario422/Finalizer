@@ -1,0 +1,71 @@
+name: Build Android module
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  ANDROID_API_LEVEL: "26"
+  ANDROID_NDK_VERSION: "27.2.12479018"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK
+        shell: bash
+        run: sdkmanager "ndk;${ANDROID_NDK_VERSION}"
+
+      - name: Run tests
+        run: cargo test --locked
+
+      - name: Build finalizer
+        shell: bash
+        run: |
+          linker="${ANDROID_SDK_ROOT}/ndk/${ANDROID_NDK_VERSION}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android${ANDROID_API_LEVEL}-clang"
+          test -x "${linker}"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="${linker}"
+          export CC_AARCH64_LINUX_ANDROID="${linker}"
+          cargo build --locked --release --target aarch64-linux-android
+
+      - name: Package Magisk module
+        shell: bash
+        run: |
+          install -m 0755 \
+            target/aarch64-linux-android/release/finalizer \
+            mode/system/bin/finalizer
+          mkdir -p dist
+          cd mode
+          zip -r ../dist/finalizer.zip .
+
+      - name: Verify package
+        shell: bash
+        run: |
+          test -s dist/finalizer.zip
+          unzip -l dist/finalizer.zip
+
+      - name: Upload module
+        uses: actions/upload-artifact@v4
+        with:
+          name: finalizer-magisk-module
+          path: dist/finalizer.zip
+          if-no-files-found: error
+          retention-days: 14
