@@ -51,6 +51,8 @@ impl RuntimeMode {
 #[derive(Deserialize, Debug, Clone)]
 pub struct Config {
     pub name: Name,
+    #[serde(default)]
+    pub log: Log,
     pub policy: Vec<Policy>,
     pub mode: Mode,
 }
@@ -83,6 +85,13 @@ impl Config {
     }
 
     pub fn validate(&self) -> Result<(), String> {
+        if crate::logger::LogLevel::parse(&self.log.level).is_none() {
+            return Err(format!(
+                "invalid log level '{}'; expected error, warn, info, or debug",
+                self.log.level
+            ));
+        }
+
         if self.policy.is_empty() {
             return Err("at least one CPU policy is required".to_string());
         }
@@ -135,6 +144,19 @@ impl Config {
         }
 
         Ok(())
+    }
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct Log {
+    pub level: String,
+}
+
+impl Default for Log {
+    fn default() -> Self {
+        Self {
+            level: "info".to_string(),
+        }
     }
 }
 
@@ -248,6 +270,23 @@ mod validation_tests {
         sd8e_config()
             .validate()
             .expect("SD8e config must validate");
+    }
+
+    #[test]
+    fn defaults_to_info_when_log_section_is_missing() {
+        let content = std::fs::read_to_string("./mode/config/config.toml").unwrap();
+        let content = content.replacen("[log]", "[ignored_log]", 1);
+        let config: Config = toml::from_str(&content).unwrap();
+
+        assert_eq!(config.log.level, "info");
+    }
+
+    #[test]
+    fn rejects_unknown_log_level() {
+        let mut config = sd8e_config();
+        config.log.level = "trace".to_string();
+
+        assert!(config.validate().unwrap_err().contains("invalid log level"));
     }
 
     #[test]

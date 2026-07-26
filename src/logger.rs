@@ -6,15 +6,63 @@ use std::{
 
 use chrono::Local;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum LogLevel {
+    Error,
+    Warn,
+    Info,
+    Debug,
+}
+
+impl LogLevel {
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim() {
+            "error" => Some(Self::Error),
+            "warn" => Some(Self::Warn),
+            "info" => Some(Self::Info),
+            "debug" => Some(Self::Debug),
+            _ => None,
+        }
+    }
+
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Error => "error",
+            Self::Warn => "warn",
+            Self::Info => "info",
+            Self::Debug => "debug",
+        }
+    }
+
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Error => "ERROR",
+            Self::Warn => "WARN",
+            Self::Info => "INFO",
+            Self::Debug => "DEBUG",
+        }
+    }
+}
+
 pub struct Logger {
     path: PathBuf,
+    level: LogLevel,
 }
 
 impl Logger {
     pub fn new(path: &str) -> Self {
         Self {
             path: PathBuf::from(path),
+            level: LogLevel::Info,
         }
+    }
+
+    pub fn set_level(&mut self, level: LogLevel) {
+        self.level = level;
+    }
+
+    pub const fn level(&self) -> LogLevel {
+        self.level
     }
 
     pub fn clear(&mut self) {
@@ -24,18 +72,26 @@ impl Logger {
     }
 
     pub fn info(&mut self, message: String) {
-        self.write("INFO", &message);
+        self.write(LogLevel::Info, &message);
     }
 
     pub fn warn(&mut self, message: String) {
-        self.write("WARN", &message);
+        self.write(LogLevel::Warn, &message);
     }
 
     pub fn error(&mut self, message: String) {
-        self.write("ERROR", &message);
+        self.write(LogLevel::Error, &message);
     }
 
-    fn write(&self, level: &str, message: &str) {
+    pub fn debug(&mut self, message: String) {
+        self.write(LogLevel::Debug, &message);
+    }
+
+    fn write(&self, level: LogLevel, message: &str) {
+        if level > self.level {
+            return;
+        }
+
         if self.ensure_parent().is_err() {
             return;
         }
@@ -49,7 +105,7 @@ impl Logger {
         };
 
         let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S");
-        let _ = writeln!(file, "[{timestamp}] [{level}] {message}");
+        let _ = writeln!(file, "[{timestamp}] [{}] {message}", level.label());
     }
 
     fn ensure_parent(&self) -> std::io::Result<()> {
@@ -85,7 +141,7 @@ mod tests {
     }
 
     #[test]
-    fn writes_all_supported_levels() {
+    fn default_level_writes_info_and_above() {
         let path = test_path("levels");
         let mut logger = logger_for(&path);
         logger.clear();
@@ -93,11 +149,55 @@ mod tests {
         logger.info("started".to_string());
         logger.warn("limited".to_string());
         logger.error("failed".to_string());
+        logger.debug("details".to_string());
 
         let content = fs::read_to_string(&path).unwrap();
         assert!(content.contains("[INFO] started"));
         assert!(content.contains("[WARN] limited"));
         assert!(content.contains("[ERROR] failed"));
+        assert!(!content.contains("[DEBUG] details"));
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn debug_level_writes_debug_messages() {
+        let path = test_path("debug");
+        let mut logger = logger_for(&path);
+        logger.clear();
+        logger.set_level(LogLevel::Debug);
+
+        logger.debug("details".to_string());
+
+        assert!(fs::read_to_string(&path).unwrap().contains("[DEBUG] details"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn configured_level_filters_less_important_messages() {
+        let path = test_path("filter");
+        let mut logger = logger_for(&path);
+        logger.clear();
+        logger.set_level(LogLevel::Warn);
+
+        logger.debug("debug".to_string());
+        logger.info("info".to_string());
+        logger.warn("warn".to_string());
+        logger.error("error".to_string());
+
+        let content = fs::read_to_string(&path).unwrap();
+        assert!(!content.contains("[DEBUG]"));
+        assert!(!content.contains("[INFO]"));
+        assert!(content.contains("[WARN] warn"));
+        assert!(content.contains("[ERROR] error"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn parses_supported_levels() {
+        assert_eq!(LogLevel::parse("error"), Some(LogLevel::Error));
+        assert_eq!(LogLevel::parse("warn"), Some(LogLevel::Warn));
+        assert_eq!(LogLevel::parse("info"), Some(LogLevel::Info));
+        assert_eq!(LogLevel::parse("debug\n"), Some(LogLevel::Debug));
+        assert_eq!(LogLevel::parse("trace"), None);
     }
 }

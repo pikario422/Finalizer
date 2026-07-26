@@ -13,6 +13,11 @@ name = "SD8e"
 version = "1.0"
 author = "pikario"
 
+# 日志级别：error / warn / info / debug
+# debug 会记录动态调频和 Touch Boost，日志量较大
+[log]
+level = "info"
+
 # 内核调频集群绑定，匹配本机双policy架构
 [[policy]]
 from = 0

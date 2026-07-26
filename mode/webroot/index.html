@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f4f6f7" />
+    <title>Finalizer 控制台</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="product-name">Finalizer</p>
+        <h1>调度控制台</h1>
+      </div>
+      <div id="runtimeBadge" class="runtime-badge" data-state="checking">
+        <span class="status-dot" aria-hidden="true"></span>
+        <span id="runtimeText">检查中</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="status-band" aria-label="运行状态">
+        <div class="metric">
+          <span>当前模式</span>
+          <strong id="currentMode">--</strong>
+        </div>
+        <div class="metric">
+          <span>日志级别</span>
+          <strong id="currentLevel">--</strong>
+        </div>
+        <div class="metric">
+          <span>日志大小</span>
+          <strong id="logSize">--</strong>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="modeHeading">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">MODE</p>
+            <h2 id="modeHeading">运行模式</h2>
+          </div>
+          <span id="modeFeedback" class="inline-status" aria-live="polite"></span>
+        </div>
+        <div id="modeControl" class="mode-control" role="group" aria-label="选择运行模式">
+          <button type="button" data-mode="powersave" aria-pressed="false">
+            <strong>省电</strong><span>Power</span>
+          </button>
+          <button type="button" data-mode="balance" aria-pressed="false">
+            <strong>均衡</strong><span>Balance</span>
+          </button>
+          <button type="button" data-mode="performance" aria-pressed="false">
+            <strong>性能</strong><span>Performance</span>
+          </button>
+          <button type="button" data-mode="fast" aria-pressed="false">
+            <strong>极速</strong><span>Fast</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="levelHeading">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">LOG LEVEL</p>
+            <h2 id="levelHeading">日志级别</h2>
+          </div>
+          <select id="logLevel" aria-label="日志级别">
+            <option value="error">Error</option>
+            <option value="warn">Warn</option>
+            <option value="info">Info</option>
+            <option value="debug">Debug</option>
+          </select>
+        </div>
+      </section>
+
+      <section class="panel log-panel" aria-labelledby="logHeading">
+        <div class="section-heading log-heading-row">
+          <div>
+            <p class="section-kicker">LIVE LOG</p>
+            <h2 id="logHeading">实时日志</h2>
+          </div>
+          <div class="toolbar">
+            <select id="logFilter" aria-label="筛选日志">
+              <option value="all">全部</option>
+              <option value="error">Error</option>
+              <option value="warn">Warn</option>
+              <option value="info">Info</option>
+              <option value="debug">Debug</option>
+            </select>
+            <button id="pauseLog" class="tool-button" type="button" aria-pressed="false">暂停</button>
+            <button id="clearLog" class="tool-button danger" type="button">清空</button>
+          </div>
+        </div>
+        <div id="logViewport" class="log-viewport" role="log" aria-live="off" aria-label="Finalizer 日志">
+          <div class="empty-state">等待日志数据</div>
+        </div>
+        <label class="auto-scroll">
+          <input id="autoScroll" type="checkbox" checked />
+          <span>自动滚动</span>
+        </label>
+      </section>
+
+      <section class="panel config-panel" aria-labelledby="configHeading">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">CONFIG.TOML</p>
+            <h2 id="configHeading">高级配置</h2>
+          </div>
+          <span id="configState" class="inline-status" aria-live="polite">未加载</span>
+        </div>
+        <textarea id="configEditor" spellcheck="false" aria-label="Finalizer TOML 配置"></textarea>
+        <div class="config-actions">
+          <button id="reloadConfig" class="secondary-button" type="button">重新载入</button>
+          <button id="saveConfig" class="secondary-button" type="button">保存</button>
+          <button id="saveRestart" class="primary-button" type="button">保存并重启</button>
+        </div>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

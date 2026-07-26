@@ -35,7 +35,9 @@ jobs:
         run: sdkmanager "ndk;${ANDROID_NDK_VERSION}"
 
       - name: Run tests
-        run: cargo test --locked
+        run: |
+          bash tests/webui_api_test.sh
+          cargo test --locked
 
       - name: Build finalizer
         shell: bash

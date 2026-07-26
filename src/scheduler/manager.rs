@@ -77,21 +77,73 @@ impl Manager {
         }
     }
 
+    fn log_success(&self, event: &Event) {
+        let Ok(mut log) = self.logger_handle.lock() else {
+            return;
+        };
+
+        match event {
+            Event::Boost((index, (min_freq, max_freq))) => log.debug(format!(
+                "Touch Boost 已应用: policy{index}, min_freq={min_freq} kHz, max_freq={max_freq} kHz"
+            )),
+            Event::SetFreq((index, (min_freq, max_freq))) => log.debug(format!(
+                "动态调频已应用: policy{index}, min_freq={min_freq} kHz, max_freq={max_freq} kHz"
+            )),
+            Event::ApplyMode(mode) => {
+                let set = self.config.mode_policy(*mode);
+                log.info(format!(
+                    "模式策略已应用: mode={}, idle_governor={}",
+                    mode.name(),
+                    set.idle_governor
+                ));
+                for (cpu, policy) in self.config.policy.iter().zip(set.policy.iter()) {
+                    log.info(format!(
+                        "  policy{}(cpu{}-{}): governor={}, min_freq={} kHz, max_freq={} kHz, sleep_freq={} kHz, delay={} ms, margin={}, diff={} kHz, can_boost_freq={} kHz, boost_freq={} kHz",
+                        cpu.from,
+                        cpu.from,
+                        cpu.to,
+                        policy.governor,
+                        policy.min_freq,
+                        policy.max_freq,
+                        policy.sleep_freq,
+                        policy.delay,
+                        policy.margin,
+                        policy.diff,
+                        policy.can_boost_freq,
+                        policy.boost_freq
+                    ));
+                }
+            }
+            Event::RestoreHardware => {
+                log.info("游戏场景已恢复硬件频率范围".to_string());
+                for cpu in &self.config.policy {
+                    if let Some(policy) = self.cpu_freq_handle.policys.get(&(cpu.from as u8)) {
+                        let (min_freq, max_freq) = policy.hardware_limits();
+                        log.info(format!(
+                            "  policy{}(cpu{}-{}): hardware_min={} kHz, hardware_max={} kHz",
+                            cpu.from, cpu.from, cpu.to, min_freq, max_freq
+                        ));
+                    }
+                }
+            }
+            Event::ApplySleep(mode) => {
+                let set = self.config.mode_policy(*mode);
+                log.info(format!("熄屏策略已应用: mode={}", mode.name()));
+                for (cpu, policy) in self.config.policy.iter().zip(set.policy.iter()) {
+                    log.info(format!(
+                        "  policy{}(cpu{}-{}): min_freq={} kHz, sleep_max={} kHz",
+                        cpu.from, cpu.from, cpu.to, policy.min_freq, policy.sleep_freq
+                    ));
+                }
+            }
+        }
+    }
+
     pub fn start_loop(&mut self) {
         while let Ok(event) = self.rx.recv() {
             let result = self.handle_event(&event);
             match result {
-                Ok(())
-                    if matches!(
-                        &event,
-                        Event::ApplyMode(_) | Event::RestoreHardware | Event::ApplySleep(_)
-                    ) =>
-                {
-                    if let Ok(mut log) = self.logger_handle.lock() {
-                        log.info(format!("调度事件执行成功: {event:?}"));
-                    }
-                }
-                Ok(()) => {}
+                Ok(()) => self.log_success(&event),
                 Err(error) => {
                     if let Ok(mut log) = self.logger_handle.lock() {
                         log.warn(format!("调度事件执行失败: {event:?}, 错误: {error}"))

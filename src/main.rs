@@ -11,8 +11,8 @@ use finalizer::{
     config::data::{self, GameList, RuntimeMode},
     cpu_handle::cpu_stat::CpuStat,
     devices::touch,
-    logger,
-    scheduler::{game_moniter, manager, mode_switch, screen_moniter, state},
+    logger::{self, LogLevel},
+    scheduler::{game_moniter, log_config, manager, mode_switch, screen_moniter, state},
     utils,
 };
 
@@ -44,7 +44,6 @@ fn log_touch_disabled(
 fn main() {
     let mut log = logger::Logger::new(LOG_PATH);
     log.clear();
-    log.info("你好!感谢你使用SZE_FINALIZER".to_string());
 
     let config = match data::Config::new(CONFIG_PATH) {
         Ok(config) => config,
@@ -57,6 +56,12 @@ fn main() {
         log.error(format!("配置校验失败: {error}"));
         return;
     }
+    let Some(log_level) = LogLevel::parse(&config.log.level) else {
+        log.error(format!("无效的日志级别: {}", config.log.level));
+        return;
+    };
+    log.set_level(log_level);
+    log.info("你好!感谢你使用SZE_FINALIZER".to_string());
     let game_list = match GameList::new(GAME_LIST_PATH) {
         Ok(list) => list,
         Err(error) => {
@@ -68,6 +73,7 @@ fn main() {
     log.info(format!("配置名:{}", config.name.name));
     log.info(format!("配置作者:{}", config.name.author));
     log.info(format!("配置版本:{}", config.name.version));
+    log.info(format!("日志级别:{}", log_level.name()));
     log.info(format!("模块目录:{MODULE_PATH}"));
 
     let initial_mode = match fs::read_to_string(MODE_PATH)
@@ -89,6 +95,16 @@ fn main() {
     let onf = Arc::new(AtomicBool::new(initial_screen_on));
     let is_game = Arc::new(AtomicBool::new(initial_is_game));
     let (tx, rx) = mpsc::channel();
+
+    let mut log_config_monitor =
+        log_config::LogConfigMonitor::new(CONFIG_PATH.to_string(), logger_handle.clone());
+    if let Err(error) = std::thread::Builder::new()
+        .name("log_config".to_string())
+        .spawn(move || log_config_monitor.start_loop())
+    {
+        log_thread_error(&logger_handle, "log_config", &error);
+        return;
+    }
 
     let mut manager = match manager::Manager::new(rx, logger_handle.clone(), config.clone()) {
         Ok(manager) => manager,
