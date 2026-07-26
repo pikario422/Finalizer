@@ -156,6 +156,15 @@ impl Moniter {
 
             if boosted {
                 std::thread::sleep(Duration::from_millis(300));
+                if self.onf.load(Ordering::Relaxed) && !self.is_game.load(Ordering::Relaxed) {
+                    let mode = data::RuntimeMode::from_index(self.mode.load(Ordering::Relaxed))
+                        .unwrap_or(data::RuntimeMode::Power);
+                    if let Err(error) = self.tx.send(Event::EndBoost(mode))
+                        && let Ok(mut log) = self.logger_handle.lock()
+                    {
+                        log.warn(format!("Failed to restore mode after Touch Boost: {error}"));
+                    }
+                }
             }
         }
     }

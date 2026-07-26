@@ -74,9 +74,16 @@ fn read_frequency_path(path: &str) -> io::Result<u32> {
     read_value(&mut file).map_err(|error| with_path("read", path, error))
 }
 
+fn read_text_path(path: &str) -> io::Result<String> {
+    std::fs::read_to_string(path)
+        .map(|value| value.trim().to_string())
+        .map_err(|error| with_path("read", path, error))
+}
+
 pub struct CpuFreq {
     pub policys: HashMap<u8, Policy>,
     idle_governor: Option<String>,
+    original_idle_governor: Option<String>,
 }
 
 impl CpuFreq {
@@ -107,6 +114,9 @@ impl CpuFreq {
         } else {
             None
         };
+        let original_idle_governor = idle_governor
+            .as_deref()
+            .and_then(|path| read_text_path(path).ok());
 
         let mut lines = Vec::new();
 
@@ -124,6 +134,7 @@ impl CpuFreq {
         Ok(Self {
             policys: hash_map_policy,
             idle_governor,
+            original_idle_governor,
         })
     }
 
@@ -159,6 +170,21 @@ impl CpuFreq {
         }
         Ok(())
     }
+
+    pub fn restore_hardware_state(&mut self) -> io::Result<()> {
+        for policy in self.policys.values_mut() {
+            policy.restore_hardware_state()?;
+        }
+
+        if let (Some(path), Some(governor)) = (
+            self.idle_governor.as_deref(),
+            self.original_idle_governor.as_deref(),
+        ) {
+            let mut file = OpenOptions::new().write(true).open(path)?;
+            write_bytes(&mut file, governor.as_bytes())?;
+        }
+        Ok(())
+    }
 }
 
 pub struct Policy {
@@ -167,6 +193,7 @@ pub struct Policy {
     governor: File,
     hardware_min: u32,
     hardware_max: u32,
+    original_governor: String,
 }
 
 impl Policy {
@@ -218,6 +245,7 @@ impl Policy {
 
         let hardware_min = read_frequency_path(&hardware_min_path)?;
         let hardware_max = read_frequency_path(&hardware_max_path)?;
+        let original_governor = read_text_path(&governor_path)?;
 
         Ok(Self {
             max_freq: max_file,
@@ -225,6 +253,7 @@ impl Policy {
             governor: governor_file,
             hardware_min,
             hardware_max,
+            original_governor,
         })
     }
 
@@ -253,6 +282,13 @@ impl Policy {
 
     pub const fn hardware_limits(&self) -> (u32, u32) {
         (self.hardware_min, self.hardware_max)
+    }
+
+    fn restore_hardware_state(&mut self) -> io::Result<()> {
+        let limits = self.hardware_limits();
+        self.write_limits(limits)?;
+        let governor = self.original_governor.clone();
+        self.write_governor(&governor)
     }
 }
 

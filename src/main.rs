@@ -1,10 +1,13 @@
 use std::{
+    env,
     fs,
+    process,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, AtomicUsize},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         mpsc,
     },
+    time::Duration,
 };
 
 use finalizer::{
@@ -21,6 +24,53 @@ const CONFIG_PATH: &str = "/data/adb/modules/SZE_FINALIZER/config/config.toml";
 const GAME_LIST_PATH: &str = "/data/adb/modules/SZE_FINALIZER/config/game_list.toml";
 const MODE_PATH: &str = "/data/adb/modules/SZE_FINALIZER/config/config.txt";
 const LOG_PATH: &str = "/data/adb/modules/SZE_FINALIZER/log/log.log";
+static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+extern "C" fn request_shutdown(_signal: libc::c_int) {
+    SHUTDOWN_REQUESTED.store(true, Ordering::Relaxed);
+}
+
+fn install_signal_handlers() {
+    unsafe {
+        libc::signal(libc::SIGINT, request_shutdown as libc::sighandler_t);
+        libc::signal(libc::SIGTERM, request_shutdown as libc::sighandler_t);
+    }
+}
+
+fn handle_cli() {
+    let mut args = env::args().skip(1);
+    let Some(command) = args.next() else {
+        return;
+    };
+
+    if command != "--validate-config" {
+        eprintln!("未知参数: {command}");
+        process::exit(2);
+    }
+    let Some(path) = args.next() else {
+        eprintln!("缺少配置文件路径");
+        process::exit(2);
+    };
+    if args.next().is_some() {
+        eprintln!("参数过多");
+        process::exit(2);
+    }
+
+    match data::Config::new(&path).and_then(|config| {
+        config
+            .validate()
+            .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+    }) {
+        Ok(()) => {
+            println!("配置有效");
+            process::exit(0);
+        }
+        Err(error) => {
+            eprintln!("配置无效: {error}");
+            process::exit(1);
+        }
+    }
+}
 
 fn log_thread_error(
     logger_handle: &Arc<Mutex<logger::Logger>>,
@@ -42,6 +92,8 @@ fn log_touch_disabled(
 }
 
 fn main() {
+    handle_cli();
+    install_signal_handlers();
     let mut log = logger::Logger::new(LOG_PATH);
     log.clear();
 
@@ -97,6 +149,20 @@ fn main() {
     let onf = Arc::new(AtomicBool::new(initial_screen_on));
     let is_game = Arc::new(AtomicBool::new(initial_is_game));
     let (tx, rx) = mpsc::channel();
+
+    let shutdown_tx = tx.clone();
+    if let Err(error) = std::thread::Builder::new()
+        .name("signal_monitor".to_string())
+        .spawn(move || {
+            while !SHUTDOWN_REQUESTED.load(Ordering::Relaxed) {
+                std::thread::sleep(Duration::from_millis(200));
+            }
+            let _ = shutdown_tx.send(manager::Event::Shutdown);
+        })
+    {
+        log_thread_error(&logger_handle, "signal_monitor", &error);
+        return;
+    }
 
     let mut log_config_monitor =
         log_config::LogConfigMonitor::new(CONFIG_PATH.to_string(), logger_handle.clone());

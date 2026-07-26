@@ -8,10 +8,12 @@ use crate::{config::data, cpu_handle::cpu_freq::CpuFreq};
 #[derive(Debug, Clone, PartialEq)]
 pub enum Event {
     Boost((u8, (u32, u32))),
+    EndBoost(data::RuntimeMode),
     SetFreq((u8, (u32, u32))),
     ApplyMode(data::RuntimeMode),
     RestoreHardware,
     ApplySleep(data::RuntimeMode),
+    Shutdown,
 }
 
 pub struct Manager {
@@ -71,9 +73,11 @@ impl Manager {
             Event::Boost((index, limits)) | Event::SetFreq((index, limits)) => {
                 self.cpu_freq_handle.write_index_freq(*index, *limits)
             }
+            Event::EndBoost(mode) => self.apply_mode(*mode),
             Event::ApplyMode(mode) => self.apply_mode(*mode),
             Event::RestoreHardware => self.cpu_freq_handle.restore_hardware_limits(),
             Event::ApplySleep(mode) => self.apply_sleep(*mode),
+            Event::Shutdown => self.cpu_freq_handle.restore_hardware_state(),
         }
     }
 
@@ -86,6 +90,9 @@ impl Manager {
             Event::Boost((index, (min_freq, max_freq))) => log.debug(format!(
                 "Touch Boost: p{index} {min_freq}-{max_freq} kHz"
             )),
+            Event::EndBoost(mode) => {
+                log.debug(format!("Touch Boost 结束，恢复 {} 模式", mode.name()))
+            }
             Event::SetFreq((index, (min_freq, max_freq))) => log.debug(format!(
                 "动态调频: p{index} {min_freq}-{max_freq} kHz"
             )),
@@ -163,12 +170,14 @@ impl Manager {
                     .join(" | ");
                 log.info(format!("熄屏策略: {} | {} kHz", mode.name(), limits));
             }
+            Event::Shutdown => log.info("退出前已恢复硬件调度状态".to_string()),
         }
     }
 
     pub fn start_loop(&mut self) {
         while let Ok(event) = self.rx.recv() {
             let result = self.handle_event(&event);
+            let shutdown = matches!(event, Event::Shutdown);
             match result {
                 Ok(()) => self.log_success(&event),
                 Err(error) => {
@@ -176,6 +185,9 @@ impl Manager {
                         log.warn(format!("调度事件执行失败: {event:?}, 错误: {error}"))
                     }
                 }
+            }
+            if shutdown {
+                break;
             }
         }
     }

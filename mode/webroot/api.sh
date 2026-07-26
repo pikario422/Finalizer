@@ -44,7 +44,13 @@ validate_config_file() {
     grep -q '^\[mode\.perf\][[:space:]]*$' "$file" || return 1
     grep -q '^\[mode\.fast\][[:space:]]*$' "$file" || return 1
     level=$(read_log_level_from "$file")
-    [ -z "$level" ] || validate_level "$level"
+    [ -z "$level" ] || validate_level "$level" || return 1
+    [ -x "$BINARY" ] || return 1
+    "$BINARY" --validate-config "$file" >/dev/null 2>&1
+}
+
+backup_config() {
+    cp "$CONFIG_FILE" "$CONFIG_FILE.webui.bak" || fail "备份配置失败"
 }
 
 set_log_level() {
@@ -91,6 +97,7 @@ set_log_level() {
         rm -f "$tmp"
         fail "更新后的配置无效"
     }
+    backup_config
     cat "$tmp" > "$CONFIG_FILE" || {
         rm -f "$tmp"
         fail "写入配置失败"
@@ -112,6 +119,7 @@ write_config() {
         rm -f "$tmp"
         fail "配置缺少必要字段或日志级别无效"
     }
+    backup_config
     cat "$tmp" > "$CONFIG_FILE" || {
         rm -f "$tmp"
         fail "写入配置失败"
@@ -134,7 +142,18 @@ restart_finalizer() {
 
     "$BINARY" </dev/null >/dev/null 2>&1 &
     sleep 2
-    pidof finalizer >/dev/null 2>&1 || fail "Finalizer 启动失败，请检查日志和配置"
+    if ! pidof finalizer >/dev/null 2>&1; then
+        backup="$CONFIG_FILE.webui.bak"
+        if [ -f "$backup" ] && validate_config_file "$backup"; then
+            cat "$backup" > "$CONFIG_FILE" || fail "Finalizer 启动失败，配置回滚也失败"
+            "$BINARY" </dev/null >/dev/null 2>&1 &
+            sleep 2
+            if pidof finalizer >/dev/null 2>&1; then
+                fail "新配置启动失败，已恢复上一份配置"
+            fi
+        fi
+        fail "Finalizer 启动失败，请检查日志和配置"
+    fi
     echo "running"
 }
 

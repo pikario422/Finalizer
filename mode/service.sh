@@ -24,5 +24,5 @@ wait_until_login() {
 
 wait_until_login
 
-chmod 777  $MODDIR/system/bin/*
-su -c  $MODDIR/system/bin/finalizer
+chmod 755 "$MODDIR"/system/bin/*
+exec "$MODDIR/system/bin/finalizer"

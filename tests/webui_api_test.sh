@@ -16,6 +16,14 @@ trap cleanup EXIT
 mkdir -p "$MODULE_DIR" "$MODULE_DIR/log"
 cp -R "$ROOT_DIR/mode/." "$MODULE_DIR/"
 API="$MODULE_DIR/webroot/api.sh"
+cat > "$MODULE_DIR/system/bin/finalizer" <<'EOF'
+#!/usr/bin/env bash
+if [[ "${1:-}" == "--validate-config" ]] && ! grep -q 'invalid_value' "$2"; then
+    exit 0
+fi
+exit 1
+EOF
+chmod 755 "$MODULE_DIR/system/bin/finalizer"
 printf '%s\n' '[2026-07-26 18:00:00] [INFO] test log' > "$MODULE_DIR/log/log.log"
 
 status=$(bash "$API" status)
@@ -42,6 +50,14 @@ cmp "$TEST_ROOT/expected.toml" "$MODULE_DIR/config/config.toml"
 invalid_payload=$(printf 'invalid config' | base64 | tr -d '\n')
 if bash "$API" write-config "$invalid_payload" >/dev/null 2>&1; then
     echo "invalid config was accepted" >&2
+    exit 1
+fi
+
+cp "$TEST_ROOT/expected.toml" "$TEST_ROOT/rust-invalid.toml"
+printf '\ninvalid_value = true\n' >> "$TEST_ROOT/rust-invalid.toml"
+invalid_payload=$(base64 < "$TEST_ROOT/rust-invalid.toml" | tr -d '\n')
+if bash "$API" write-config "$invalid_payload" >/dev/null 2>&1; then
+    echo "config rejected by Rust validator was accepted" >&2
     exit 1
 fi
 
