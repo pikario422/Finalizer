@@ -163,6 +163,27 @@ fn main() {
     let initial_game_entry = state::is_whitelisted(&initial_window, &game_list);
     let initial_is_game = initial_game_entry.is_some();
     let initial_game_profile = state::game_profile_index(initial_game_entry);
+    log.debug(format!(
+        "游戏检测初始窗口: {}",
+        if initial_window.is_empty() {
+            "<未获取>"
+        } else {
+            &initial_window
+        }
+    ));
+    match initial_game_entry {
+        Some(entry) => log.info(format!(
+            "游戏检测已启动: 白名单={} 项，当前={} ({})，策略={}",
+            game_list.listvalue.len(),
+            entry.name,
+            entry.pkg,
+            entry.mode.as_deref().unwrap_or("hardware")
+        )),
+        None => log.info(format!(
+            "游戏检测已启动: 白名单={} 项，当前前台未命中",
+            game_list.listvalue.len()
+        )),
+    }
 
     let logger_handle = Arc::new(Mutex::new(log));
     let mode = Arc::new(AtomicUsize::new(initial_mode.index()));
@@ -320,6 +341,7 @@ fn main() {
         onf,
         mode,
         game_profile,
+        GAME_LIST_PATH.to_string(),
         game_list,
         logger_handle.clone(),
         tx,
