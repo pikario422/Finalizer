@@ -39,7 +39,7 @@ impl Moniter {
     }
 
     pub fn start_loop(&mut self) {
-        let mut previous_status = None;
+        let mut previous_status = Some(self.onf.load(Ordering::Relaxed));
 
         loop {
             let screen_status = utils::monitor_screen_status();
@@ -53,10 +53,13 @@ impl Moniter {
                 mode,
             ) {
                 if let Ok(mut log) = self.logger_handle.lock() {
-                    log.info(format!(
-                        "Screen state: {:?} -> {screen_status}",
-                        previous_status
-                    ));
+                    let previous = if previous_status == Some(true) {
+                        "亮屏"
+                    } else {
+                        "熄屏"
+                    };
+                    let current = if screen_status { "亮屏" } else { "熄屏" };
+                    log.info(format!("屏幕状态: {previous} -> {current}"));
                 }
 
                 self.onf.store(screen_status, Ordering::Relaxed);

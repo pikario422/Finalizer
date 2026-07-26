@@ -52,12 +52,10 @@ impl GameMoniter {
                 if let Ok(mut log) = self.logger_handle.lock() {
                     match matched_entry {
                         Some(entry) => log.info(format!(
-                            "Entered whitelisted app {}:{}; Finalizer scheduling suspended",
+                            "进入游戏: {} ({})",
                             entry.name, entry.pkg
                         )),
-                        None => log.info(
-                            "Exited whitelisted app; Finalizer scheduling resumed".to_string(),
-                        ),
+                        None => log.info("退出游戏，恢复 Finalizer 调度".to_string()),
                     }
                 }
 

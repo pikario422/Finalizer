@@ -61,7 +61,6 @@ fn main() {
         return;
     };
     log.set_level(log_level);
-    log.info("你好!感谢你使用SZE_FINALIZER".to_string());
     let game_list = match GameList::new(GAME_LIST_PATH) {
         Ok(list) => list,
         Err(error) => {
@@ -70,11 +69,14 @@ fn main() {
         }
     };
 
-    log.info(format!("配置名:{}", config.name.name));
-    log.info(format!("配置作者:{}", config.name.author));
-    log.info(format!("配置版本:{}", config.name.version));
-    log.info(format!("日志级别:{}", log_level.name()));
-    log.info(format!("模块目录:{MODULE_PATH}"));
+    log.info(format!(
+        "启动: 配置={} v{}, 作者={}, 日志={}",
+        config.name.name,
+        config.name.version,
+        config.name.author,
+        log_level.name()
+    ));
+    log.debug(format!("模块目录: {MODULE_PATH}"));
 
     let initial_mode = match fs::read_to_string(MODE_PATH)
         .ok()

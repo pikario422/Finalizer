@@ -84,21 +84,40 @@ impl Manager {
 
         match event {
             Event::Boost((index, (min_freq, max_freq))) => log.debug(format!(
-                "Touch Boost 已应用: policy{index}, min_freq={min_freq} kHz, max_freq={max_freq} kHz"
+                "Touch Boost: p{index} {min_freq}-{max_freq} kHz"
             )),
             Event::SetFreq((index, (min_freq, max_freq))) => log.debug(format!(
-                "动态调频已应用: policy{index}, min_freq={min_freq} kHz, max_freq={max_freq} kHz"
+                "动态调频: p{index} {min_freq}-{max_freq} kHz"
             )),
             Event::ApplyMode(mode) => {
                 let set = self.config.mode_policy(*mode);
+                let limits = self
+                    .config
+                    .policy
+                    .iter()
+                    .zip(set.policy.iter())
+                    .map(|(cpu, policy)| {
+                        format!(
+                            "p{}(cpu{}-{}):{} {}-{}",
+                            cpu.from,
+                            cpu.from,
+                            cpu.to,
+                            policy.governor,
+                            policy.min_freq,
+                            policy.max_freq
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" | ");
                 log.info(format!(
-                    "模式策略已应用: mode={}, idle_governor={}",
+                    "应用模式: {} | idle={} | {} kHz",
                     mode.name(),
-                    set.idle_governor
+                    set.idle_governor,
+                    limits
                 ));
                 for (cpu, policy) in self.config.policy.iter().zip(set.policy.iter()) {
-                    log.info(format!(
-                        "  policy{}(cpu{}-{}): governor={}, min_freq={} kHz, max_freq={} kHz, sleep_freq={} kHz, delay={} ms, margin={}, diff={} kHz, can_boost_freq={} kHz, boost_freq={} kHz",
+                    log.debug(format!(
+                        "模式参数: p{}(cpu{}-{}) governor={}, min={}, max={}, sleep={}, delay={}ms, margin={}, diff={}, boost_threshold={}, boost={} kHz",
                         cpu.from,
                         cpu.from,
                         cpu.to,
@@ -115,26 +134,34 @@ impl Manager {
                 }
             }
             Event::RestoreHardware => {
-                log.info("游戏场景已恢复硬件频率范围".to_string());
+                let mut limits = Vec::with_capacity(self.config.policy.len());
                 for cpu in &self.config.policy {
                     if let Some(policy) = self.cpu_freq_handle.policys.get(&(cpu.from as u8)) {
                         let (min_freq, max_freq) = policy.hardware_limits();
-                        log.info(format!(
-                            "  policy{}(cpu{}-{}): hardware_min={} kHz, hardware_max={} kHz",
+                        limits.push(format!(
+                            "p{}(cpu{}-{}):{}-{}",
                             cpu.from, cpu.from, cpu.to, min_freq, max_freq
                         ));
                     }
                 }
+                log.info(format!("恢复硬件频率: {} kHz", limits.join(" | ")));
             }
             Event::ApplySleep(mode) => {
                 let set = self.config.mode_policy(*mode);
-                log.info(format!("熄屏策略已应用: mode={}", mode.name()));
-                for (cpu, policy) in self.config.policy.iter().zip(set.policy.iter()) {
-                    log.info(format!(
-                        "  policy{}(cpu{}-{}): min_freq={} kHz, sleep_max={} kHz",
-                        cpu.from, cpu.from, cpu.to, policy.min_freq, policy.sleep_freq
-                    ));
-                }
+                let limits = self
+                    .config
+                    .policy
+                    .iter()
+                    .zip(set.policy.iter())
+                    .map(|(cpu, policy)| {
+                        format!(
+                            "p{}(cpu{}-{}):{}-{}",
+                            cpu.from, cpu.from, cpu.to, policy.min_freq, policy.sleep_freq
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" | ");
+                log.info(format!("熄屏策略: {} | {} kHz", mode.name(), limits));
             }
         }
     }

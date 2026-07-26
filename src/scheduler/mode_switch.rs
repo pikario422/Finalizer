@@ -68,7 +68,7 @@ impl ModeSwitch {
                 Some(mode) => mode.name(),
                 None => "uninitialized",
             };
-            log.info(format!("Mode: {previous} -> {}", next.name()));
+            log.info(format!("模式切换: {previous} -> {}", next.name()));
         }
 
         *current = Some(next);
@@ -87,7 +87,7 @@ impl ModeSwitch {
 
     pub fn start_loop(&mut self) {
         let mut inotify = utils::inotify_init(&self.mode_path);
-        let mut current = None;
+        let mut current = data::RuntimeMode::from_index(self.mode.load(Ordering::Relaxed));
         self.process_mode_file(&mut current);
 
         loop {
