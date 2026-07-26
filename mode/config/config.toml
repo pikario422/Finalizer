@@ -1,164 +1,143 @@
+# 骁龙8e 真机适配 Finalizer 完整调度配置
+# 硬件采集信息：
+# CPU核心 0-7 共8核
+# cpufreq 仅存在 policy0、policy6
+# policy0: cpu0~5 大小核集群
+# policy6: cpu6~7 X2超大核集群
+# 可用频点(kHz):
+# 384000 556800 748800 960000 1152000 1363200
+# 1555200 1785600 1996800 2227200 2400000
+# 2745600 2918400 3072000 3321600 3532800
 [name]
-name = "8100_MAX"
-version = "2.0"
-author = "ShenEternity"
+name = "SD8e"
+version = "1.0"
+author = "pikario"
 
+# 内核调频集群绑定，匹配本机双policy架构
 [[policy]]
 from = 0
-to = 3
+to = 5
 
 [[policy]]
-from = 4
-to = 6
-
-[[policy]]
-from = 7
+from = 6
 to = 7
 
-[mode]
+# ---------------------------
+# Power 省电模式（待机/社交/轻度浏览）
+# ---------------------------
 [mode.power]
 idle_governor = "menu"
+
+# policy0 0~5 中小核策略
 [[mode.power.policy]]
 delay = 600
-max_freq = 2000000
-min_freq = 500000
+max_freq = 2400000
+min_freq = 384000
 can_boost_freq = 1000000
-boost_freq = 2000000
+boost_freq = 1996800
 margin = 2.1
 diff = 70000
-governor = "sugov_ext"
-sleep_freq = 1000000
+governor = "walt"
+sleep_freq = 960000
 
+# policy6 6~7 X2超大核策略
 [[mode.power.policy]]
 delay = 600
-max_freq = 2250000
-min_freq = 500000
+max_freq = 2400000
+min_freq = 384000
 can_boost_freq = 1000000
-boost_freq = 2000000
-margin = 2.2
-diff = 70000
-governor = "sugov_ext"
-sleep_freq = 1000000
-
-
-[[mode.power.policy]]
-delay = 600
-max_freq = 200000
-min_freq = 500000
-can_boost_freq = 1000000
-boost_freq = 2000000
+boost_freq = 1996800
 margin = 2.0
 diff = 70000
-governor = "sugov_ext"
-sleep_freq = 1000000
+governor = "walt"
+sleep_freq = 960000
 
-
-
+# ---------------------------
+# Blan 均衡模式（日常游戏/多任务）
+# ---------------------------
 [mode.blan]
 idle_governor = "menu"
+
+# policy0 0~5 中小核策略
 [[mode.blan.policy]]
 delay = 400
-max_freq = 2000000
-min_freq = 500000
+max_freq = 2918400
+min_freq = 384000
 can_boost_freq = 1000000
-boost_freq = 2000000
+boost_freq = 2400000
 margin = 2.3
 diff = 70000
-governor = "sugov_ext"
-sleep_freq = 1000000
+governor = "walt"
+sleep_freq = 960000
 
+# policy6 6~7 X2超大核策略
 [[mode.blan.policy]]
 delay = 400
-max_freq = 2650000
-min_freq = 500000
+max_freq = 3072000
+min_freq = 384000
 can_boost_freq = 1000000
-boost_freq = 2000000
+boost_freq = 2400000
 margin = 2.3
 diff = 70000
-governor = "sugov_ext"
-sleep_freq = 1000000
+governor = "walt"
+sleep_freq = 960000
 
-[[mode.blan.policy]]
-delay = 400
-max_freq = 2650000
-min_freq = 500000
-can_boost_freq = 1000000
-boost_freq = 2000000
-margin = 2.0
-diff = 70000
-governor = "sugov_ext"
-sleep_freq = 1000000
-
-
+# ---------------------------
+# Perf 性能模式（高画质手游/剪辑/重度负载）
+# ---------------------------
 [mode.perf]
 idle_governor = "menu"
+
+# policy0 0~5 中小核策略
 [[mode.perf.policy]]
 delay = 200
-max_freq = 2000000
-min_freq = 500000
+max_freq = 3321600
+min_freq = 384000
 can_boost_freq = 1000000
-boost_freq = 2000000
+boost_freq = 2745600
 margin = 2.8
 diff = 70000
-governor = "sugov_ext"
-sleep_freq = 1000000
+governor = "walt"
+sleep_freq = 960000
 
+# policy6 6~7 X2超大核策略
 [[mode.perf.policy]]
 delay = 200
-max_freq = 2850000
-min_freq = 500000
+max_freq = 3532800
+min_freq = 384000
 can_boost_freq = 1000000
-boost_freq = 2000000
+boost_freq = 2745600
 margin = 2.8
 diff = 70000
-governor = "sugov_ext"
-sleep_freq = 1000000
+governor = "walt"
+sleep_freq = 960000
 
-[[mode.perf.policy]]
-delay = 200
-max_freq = 2850000
-min_freq = 500000
-can_boost_freq = 1000000
-boost_freq = 2000000
-margin = 2.8
-diff = 70000
-governor = "sugov_ext"
-sleep_freq = 1000000
-
-
-
+# ---------------------------
+# Fast 极限模式（电竞/跑分/极致帧率）
+# ---------------------------
 [mode.fast]
 idle_governor = "menu"
+
+# policy0 0~5 中小核策略
 [[mode.fast.policy]]
 delay = 100
-max_freq = 2000000
-min_freq = 500000
+max_freq = 3321600
+min_freq = 384000
 can_boost_freq = 1000000
-boost_freq = 2000000
+boost_freq = 2745600
 margin = 3.0
 diff = 70000
-governor = "sugov_ext"
-sleep_freq = 1000000
+governor = "walt"
+sleep_freq = 960000
 
+# policy6 6~7 X2超大核策略
 [[mode.fast.policy]]
 delay = 100
-max_freq = 2850000
-min_freq = 500000
+max_freq = 3532800
+min_freq = 384000
 can_boost_freq = 1000000
-boost_freq = 2000000
+boost_freq = 2745600
 margin = 3.0
 diff = 70000
-governor = "sugov_ext"
-sleep_freq = 1000000
-
-[[mode.fast.policy]]
-delay = 100
-max_freq = 2850000
-min_freq = 500000
-can_boost_freq = 1000000
-boost_freq = 2000000
-margin = 3.0
-diff = 70000
-governor = "sugov_ext"
-sleep_freq = 1000000
-
+governor = "walt"
+sleep_freq = 960000
