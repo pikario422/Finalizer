@@ -4,10 +4,15 @@ use crate::config::data::{self, GameList};
 
 use super::data::Config;
 
+fn parse_toml<T: serde::de::DeserializeOwned>(path: &str) -> std::io::Result<T> {
+    let content = fs::read_to_string(path)?;
+    toml::from_str(&content)
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+}
+
 impl Config {
-    pub fn new(path: &str) -> Self {
-        let content = fs::read_to_string(path).unwrap();
-        toml::from_str(&content).unwrap()
+    pub fn new(path: &str) -> std::io::Result<Self> {
+        parse_toml(path)
     }
 
     pub fn get_name(&self) -> data::Name {
@@ -40,8 +45,7 @@ impl Config {
 }
 
 impl GameList {
-    pub fn new(path: &str) -> Self {
-        let content = fs::read_to_string(path).unwrap();
-        toml::from_str(&content).unwrap()
+    pub fn new(path: &str) -> std::io::Result<Self> {
+        parse_toml(path)
     }
 }

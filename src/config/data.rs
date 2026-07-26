@@ -1,10 +1,141 @@
 use serde::Deserialize;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuntimeMode {
+    Power,
+    Balance,
+    Performance,
+    Fast,
+}
+
+impl RuntimeMode {
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim() {
+            "powersave" => Some(Self::Power),
+            "balance" => Some(Self::Balance),
+            "performance" => Some(Self::Performance),
+            "fast" => Some(Self::Fast),
+            _ => None,
+        }
+    }
+
+    pub const fn index(self) -> usize {
+        match self {
+            Self::Power => 0,
+            Self::Balance => 1,
+            Self::Performance => 2,
+            Self::Fast => 3,
+        }
+    }
+
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Power => "powersave",
+            Self::Balance => "balance",
+            Self::Performance => "performance",
+            Self::Fast => "fast",
+        }
+    }
+
+    pub const fn from_index(value: usize) -> Option<Self> {
+        match value {
+            0 => Some(Self::Power),
+            1 => Some(Self::Balance),
+            2 => Some(Self::Performance),
+            3 => Some(Self::Fast),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Deserialize, Debug, Clone)]
 pub struct Config {
     pub name: Name,
     pub policy: Vec<Policy>,
     pub mode: Mode,
+}
+
+pub struct ModePolicyRef<'a> {
+    pub idle_governor: &'a str,
+    pub policy: &'a [MPolicy],
+}
+
+impl Config {
+    pub fn mode_policy(&self, mode: RuntimeMode) -> ModePolicyRef<'_> {
+        match mode {
+            RuntimeMode::Power => ModePolicyRef {
+                idle_governor: &self.mode.power.idle_governor,
+                policy: &self.mode.power.policy,
+            },
+            RuntimeMode::Balance => ModePolicyRef {
+                idle_governor: &self.mode.blan.idle_governor,
+                policy: &self.mode.blan.policy,
+            },
+            RuntimeMode::Performance => ModePolicyRef {
+                idle_governor: &self.mode.perf.idle_governor,
+                policy: &self.mode.perf.policy,
+            },
+            RuntimeMode::Fast => ModePolicyRef {
+                idle_governor: &self.mode.fast.idle_governor,
+                policy: &self.mode.fast.policy,
+            },
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.policy.is_empty() {
+            return Err("at least one CPU policy is required".to_string());
+        }
+
+        for (index, policy) in self.policy.iter().enumerate() {
+            if policy.from > policy.to {
+                return Err(format!("CPU policy {index} has from > to"));
+            }
+
+            for (other_index, other) in self.policy.iter().enumerate().skip(index + 1) {
+                if policy.from <= other.to && other.from <= policy.to {
+                    return Err(format!(
+                        "CPU policies {index} and {other_index} overlap"
+                    ));
+                }
+            }
+        }
+
+        for mode in [
+            RuntimeMode::Power,
+            RuntimeMode::Balance,
+            RuntimeMode::Performance,
+            RuntimeMode::Fast,
+        ] {
+            let set = self.mode_policy(mode);
+            if set.policy.len() != self.policy.len() {
+                return Err(format!(
+                    "{} policy count {} does not match CPU policy count {}",
+                    mode.name(),
+                    set.policy.len(),
+                    self.policy.len()
+                ));
+            }
+
+            for (index, policy) in set.policy.iter().enumerate() {
+                let invalid = policy.min_freq > policy.max_freq
+                    || !(policy.min_freq..=policy.max_freq).contains(&policy.boost_freq)
+                    || !(policy.min_freq..=policy.max_freq).contains(&policy.sleep_freq)
+                    || policy.can_boost_freq > policy.boost_freq
+                    || policy.delay == 0
+                    || !policy.margin.is_finite()
+                    || policy.margin <= 0.0;
+                if invalid {
+                    return Err(format!(
+                        "{} policy {index} has invalid limits",
+                        mode.name()
+                    ));
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -90,4 +221,56 @@ fn testgame() {
     let config: GameList = toml::from_str(&content).unwrap();
 
     println!("{:?}", config);
+}
+
+#[cfg(test)]
+mod validation_tests {
+    use super::*;
+
+    fn sd8e_config() -> Config {
+        Config::new("./mode/config/config.toml").expect("SD8e config must parse")
+    }
+
+    #[test]
+    fn parses_runtime_modes() {
+        assert_eq!(RuntimeMode::parse("powersave"), Some(RuntimeMode::Power));
+        assert_eq!(RuntimeMode::parse("balance\n"), Some(RuntimeMode::Balance));
+        assert_eq!(
+            RuntimeMode::parse("performance"),
+            Some(RuntimeMode::Performance)
+        );
+        assert_eq!(RuntimeMode::parse("fast"), Some(RuntimeMode::Fast));
+        assert_eq!(RuntimeMode::parse("unknown"), None);
+    }
+
+    #[test]
+    fn validates_sd8e_config() {
+        sd8e_config()
+            .validate()
+            .expect("SD8e config must validate");
+    }
+
+    #[test]
+    fn rejects_mismatched_mode_policy_count() {
+        let mut config = sd8e_config();
+        config.mode.fast.policy.pop();
+        let error = config.validate().unwrap_err();
+        assert!(error.contains("fast policy count"));
+    }
+
+    #[test]
+    fn rejects_overlapping_cpu_ranges() {
+        let mut config = sd8e_config();
+        config.policy[1].from = 5;
+        let error = config.validate().unwrap_err();
+        assert!(error.contains("overlap"));
+    }
+
+    #[test]
+    fn rejects_invalid_frequency_bounds() {
+        let mut config = sd8e_config();
+        config.mode.power.policy[0].min_freq = 3_000_000;
+        let error = config.validate().unwrap_err();
+        assert!(error.contains("powersave policy 0"));
+    }
 }

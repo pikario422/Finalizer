@@ -2,3 +2,4 @@ pub mod game_moniter;
 pub mod manager;
 pub mod mode_switch;
 pub mod screen_moniter;
+pub mod state;

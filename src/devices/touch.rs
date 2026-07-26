@@ -1,10 +1,12 @@
+use evdev::enumerate;
 use nix::fcntl::{OFlag, open};
 use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
 use nix::sys::stat::Mode;
 use nix::unistd::read;
+use std::io;
 use std::mem::size_of;
 use std::os::fd::{AsFd, OwnedFd};
-use std::sync::atomic::{AtomicBool, AtomicUsize};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
 
@@ -22,8 +24,9 @@ pub struct TouchEvent {
     pub value: i32,
 }
 
-pub fn open_devices(devices: &str) -> OwnedFd {
-    open(devices, OFlag::O_RDONLY | OFlag::O_NONBLOCK, Mode::empty()).unwrap()
+pub fn open_devices(devices: &str) -> io::Result<OwnedFd> {
+    open(devices, OFlag::O_RDONLY | OFlag::O_NONBLOCK, Mode::empty())
+        .map_err(|error| io::Error::from_raw_os_error(error as i32))
 }
 
 pub struct Moniter {
@@ -32,6 +35,7 @@ pub struct Moniter {
     config: data::Config,
     mode: Arc<AtomicUsize>,
     cpu_freq_handle: CpuFreq,
+    onf: Arc<AtomicBool>,
     is_game: Arc<AtomicBool>,
     tx: mpsc::Sender<Event>,
 }
@@ -43,28 +47,28 @@ impl Moniter {
         logger_handle: Arc<Mutex<logger::Logger>>,
         config: data::Config,
         mode: Arc<AtomicUsize>,
+        onf: Arc<AtomicBool>,
         is_game: Arc<AtomicBool>,
-    ) -> Self {
-        let devices = open_devices(devices);
-        let cpu_freq = CpuFreq::new(config.clone(), logger_handle.clone());
-        Self {
+    ) -> io::Result<Self> {
+        let devices = open_devices(devices)?;
+        let cpu_freq_handle = CpuFreq::new(config.clone(), logger_handle.clone())?;
+        Ok(Self {
             devices,
             tx,
             config,
             mode,
-            cpu_freq_handle: cpu_freq,
+            cpu_freq_handle,
             logger_handle,
+            onf,
             is_game,
-        }
+        })
     }
 
-    // 修改函数返回值，返回 bool 表示本次是否检测到了触摸事件
     fn touch_monitor(&self) -> bool {
         let event_size = size_of::<TouchEvent>();
         let mut buffer = vec![0u8; event_size];
         let borrowed_fd = self.devices.as_fd();
         let mut poll_fd = [PollFd::new(borrowed_fd, PollFlags::POLLIN)];
-
         let mut touched = false;
 
         match poll(&mut poll_fd, PollTimeout::NONE) {
@@ -72,184 +76,96 @@ impl Moniter {
                 if let Some(flags) = poll_fd[0].revents()
                     && flags.contains(PollFlags::POLLIN)
                 {
-                    // 循环读取，直到把内核缓冲区“榨干”
                     loop {
                         match read(self.devices.as_fd(), &mut buffer) {
-                            Ok(bytes_read) if bytes_read == event_size => {
-                                // 成功读取到一个事件，标记已收到触摸
-                                touched = true;
-                                // 注意：这里不要写 break！继续循环读下一个事件
-                            }
-                            Ok(_) => {
-                                // 读取到了不完整的数据或者 EOF
-                                break;
-                            }
-                            Err(nix::Error::EAGAIN) => {
-                                // EAGAIN (WouldBlock) 表示当前缓冲区已经没有数据了
-                                break;
-                            }
-                            Err(e) => {
+                            Ok(bytes_read) if bytes_read == event_size => touched = true,
+                            Ok(_) | Err(nix::Error::EAGAIN) => break,
+                            Err(error) => {
                                 if let Ok(mut log) = self.logger_handle.lock() {
-                                    log.error(format!("监听屏幕输入事件失败 错误:{}", e));
+                                    log.error(format!("Failed to read touch input event: {error}"));
                                 }
-                                break; // 发生其他异常也退出，防止死循环
+                                break;
                             }
                         }
                     }
                 }
             }
-            Ok(_) => {
-                println!("未知返回值");
-            }
-            Err(e) => {
+            Ok(_) => {}
+            Err(error) => {
                 if let Ok(mut log) = self.logger_handle.lock() {
-                    log.error(format!("事件poll失败 错误:{}", e));
+                    log.error(format!("Failed to poll touch input: {error}"));
                 }
             }
         }
+
         touched
     }
 
     pub fn start_loop(&mut self) {
         loop {
-            // 只有当 touch_monitor 确实排查到了触摸事件，才执行 Boost 逻辑
-            if self.touch_monitor() {
-                std::thread::sleep(Duration::from_millis(300));
-                // 游戏不boost
-                if self.is_game.load(std::sync::atomic::Ordering::Relaxed) {
+            if !self.touch_monitor()
+                || !self.onf.load(Ordering::Relaxed)
+                || self.is_game.load(Ordering::Relaxed)
+            {
+                continue;
+            }
+
+            let mode = data::RuntimeMode::from_index(self.mode.load(Ordering::Relaxed))
+                .unwrap_or(data::RuntimeMode::Power);
+            let policies = self.config.mode_policy(mode).policy.to_vec();
+            let cpu_policies = self.config.policy.clone();
+            let mut boosted = false;
+
+            for (cpu, policy) in cpu_policies.iter().zip(policies.iter()) {
+                let Some(current_policy) = self.cpu_freq_handle.policys.get_mut(&(cpu.from as u8))
+                else {
+                    if let Ok(mut log) = self.logger_handle.lock() {
+                        log.warn(format!("Touch Boost policy {} is unavailable", cpu.from));
+                    }
                     continue;
-                }
-                for (u, i) in self.config.policy.clone().iter().enumerate() {
-                    let result = self.cpu_freq_handle.policys.get_mut(&(i.from as u8));
-                    if let Some(p) = result {
-                        let result = p.read_max();
-                        match result {
-                            Ok(freq) => {
-                                match self.mode.load(std::sync::atomic::Ordering::Relaxed) {
-                                    0 => {
-                                        let l = self.config.mode.power.policy[u].clone();
-                                        if freq < l.can_boost_freq {
-                                            let result = self.tx.send(Event::Boost((
-                                                i.from as u8,
-                                                (l.boost_freq, l.boost_freq),
-                                            )));
+                };
 
-                                            match result {
-                                                Ok(_) => {
-                                                    // println!("Touch");
-                                                }
-                                                Err(e) => {
-                                                    if let Ok(mut log) = self.logger_handle.lock() {
-                                                        log.warn(format!(
-                                                            "无法发送Boost事件 错误:{}",
-                                                            e
-                                                        ));
-                                                        continue;
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    1 => {
-                                        let l = self.config.mode.blan.policy[u].clone();
-                                        if freq < l.can_boost_freq {
-                                            let result = self.tx.send(Event::Boost((
-                                                i.from as u8,
-                                                (l.boost_freq, l.boost_freq),
-                                            )));
-
-                                            match result {
-                                                Ok(_) => {
-                                                    // println!("Touch");
-                                                }
-                                                Err(e) => {
-                                                    if let Ok(mut log) = self.logger_handle.lock() {
-                                                        log.warn(format!(
-                                                            "无法发送Boost事件 错误:{}",
-                                                            e
-                                                        ));
-                                                        continue;
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    2 => {
-                                        let l = self.config.mode.perf.policy[u].clone();
-                                        if freq < l.can_boost_freq {
-                                            let result = self.tx.send(Event::Boost((
-                                                i.from as u8,
-                                                (l.boost_freq, l.boost_freq),
-                                            )));
-
-                                            match result {
-                                                Ok(_) => {
-                                                    // println!("Touch");
-                                                }
-                                                Err(e) => {
-                                                    if let Ok(mut log) = self.logger_handle.lock() {
-                                                        log.warn(format!(
-                                                            "无法发送Boost事件 错误:{}",
-                                                            e
-                                                        ));
-                                                        continue;
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    3 => {
-                                        let l = self.config.mode.fast.policy[u].clone();
-                                        if freq < l.can_boost_freq {
-                                            let result = self.tx.send(Event::Boost((
-                                                i.from as u8,
-                                                (l.boost_freq, l.boost_freq),
-                                            )));
-
-                                            match result {
-                                                Ok(_) => {
-                                                    // println!("Touch");
-                                                }
-                                                Err(e) => {
-                                                    if let Ok(mut log) = self.logger_handle.lock() {
-                                                        log.warn(format!(
-                                                            "无法发送Boost事件 错误:{}",
-                                                            e
-                                                        ));
-                                                        continue;
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            Err(e) => {
+                match current_policy.read_max() {
+                    Ok(freq) if freq < policy.can_boost_freq => {
+                        match self.tx.send(Event::Boost((
+                            cpu.from as u8,
+                            (policy.boost_freq, policy.boost_freq),
+                        ))) {
+                            Ok(()) => boosted = true,
+                            Err(error) => {
                                 if let Ok(mut log) = self.logger_handle.lock() {
-                                    log.warn(format!("无法读取max_freq 错误:{}", e));
-                                    continue;
+                                    log.warn(format!(
+                                        "Failed to send Touch Boost event for policy {}: {error}",
+                                        cpu.from
+                                    ));
                                 }
                             }
                         }
                     }
+                    Ok(_) => {}
+                    Err(error) => {
+                        if let Ok(mut log) = self.logger_handle.lock() {
+                            log.warn(format!(
+                                "Failed to read max frequency for policy {}: {error}",
+                                cpu.from
+                            ));
+                        }
+                    }
                 }
+            }
+
+            if boosted {
+                std::thread::sleep(Duration::from_millis(300));
             }
         }
     }
 }
 
-use evdev::enumerate;
-
 pub fn find_touchscreen_device() -> Option<String> {
     for (path, device) in enumerate() {
-        let name = device.name().unwrap_or("");
-        println!("发现设备: {:?} -> 名字: {}", path, name);
-
         if let Some(abs_bits) = device.supported_absolute_axes()
             && abs_bits.contains(evdev::AbsoluteAxisCode::ABS_MT_POSITION_X)
         {
-            println!("{}", path.to_string_lossy().into_owned());
             return Some(path.to_string_lossy().into_owned());
         }
     }

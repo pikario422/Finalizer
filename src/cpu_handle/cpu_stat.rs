@@ -1,6 +1,6 @@
 use std::{
     fs::OpenOptions,
-    io::Read,
+    io::{self, Read},
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicUsize},
@@ -10,10 +10,26 @@ use std::{
 };
 
 use crate::{
-    config::data::{self, Mode},
+    config::data,
     cpu_handle::cpu_freq::{self},
     scheduler::manager::Event,
 };
+
+fn calculate_target_limits(
+    load_percent: u32,
+    current_max: u32,
+    policy: &data::MPolicy,
+) -> Option<(u32, u32)> {
+    let load = load_percent as f32 / 100.0;
+    let target = (policy.max_freq as f32 * load * policy.margin)
+        .clamp(policy.min_freq as f32, policy.max_freq as f32) as u32;
+
+    if target.abs_diff(current_max) < policy.diff {
+        None
+    } else {
+        Some((policy.min_freq, target))
+    }
+}
 
 pub struct CpuStat<'a> {
     policy_id: usize,
@@ -28,7 +44,7 @@ pub struct CpuStat<'a> {
     mode: Arc<AtomicUsize>,
     onf: Arc<AtomicBool>,
     is_game: Arc<AtomicBool>,
-    config: Mode,
+    config: data::Config,
 }
 
 impl<'a> CpuStat<'a> {
@@ -42,16 +58,16 @@ impl<'a> CpuStat<'a> {
         mode: Arc<AtomicUsize>,
         onf: Arc<AtomicBool>,
         is_game: Arc<AtomicBool>,
-    ) -> Self {
+    ) -> io::Result<Self> {
         let num_cpus = if to >= from {
             (to - from + 1) as usize
         } else {
             0
         };
 
-        let freq_handle = cpu_freq::Policy::new(from, logger_handle.clone());
+        let freq_handle = cpu_freq::Policy::new(from, logger_handle.clone())?;
 
-        Self {
+        Ok(Self {
             policy_id,
             from,
             to,
@@ -65,7 +81,7 @@ impl<'a> CpuStat<'a> {
             mode,
             onf,
             is_game,
-            config: config.mode,
+            config,
         }
     }
 
@@ -148,59 +164,13 @@ impl<'a> CpuStat<'a> {
 
     pub fn start_send_event_loop(&mut self) {
         loop {
-            // 根据 config_id 匹配对应的策略配置，避免代码复用
-            let config_id = self.mode.load(std::sync::atomic::Ordering::Relaxed);
+            let mode = data::RuntimeMode::from_index(
+                self.mode.load(std::sync::atomic::Ordering::Relaxed),
+            )
+            .unwrap_or(data::RuntimeMode::Power);
+            let policy = self.config.mode_policy(mode).policy[self.policy_id].clone();
 
-            // 动态提取出当前模式下的具体配置项
-            let (delay, min_limit, max_limit, margin, diff) = match config_id {
-                0 => {
-                    let p = &self.config.power.policy[self.policy_id];
-
-                    (
-                        p.delay,
-                        p.min_freq as f32,
-                        p.max_freq as f32,
-                        p.margin,
-                        p.diff,
-                    )
-                }
-                1 => {
-                    let p = &self.config.blan.policy[self.policy_id];
-                    (
-                        p.delay,
-                        p.min_freq as f32,
-                        p.max_freq as f32,
-                        p.margin,
-                        p.diff,
-                    )
-                }
-                2 => {
-                    let p = &self.config.perf.policy[self.policy_id];
-                    (
-                        p.delay,
-                        p.min_freq as f32,
-                        p.max_freq as f32,
-                        p.margin,
-                        p.diff,
-                    )
-                }
-                3 => {
-                    let p = &self.config.fast.policy[self.policy_id];
-                    (
-                        p.delay,
-                        p.min_freq as f32,
-                        p.max_freq as f32,
-                        p.margin,
-                        p.diff,
-                    )
-                }
-                _ => {
-                    // 未知模式降级
-                    (100, 200000.0, 200000.0, 1.0, 700000)
-                }
-            };
-
-            std::thread::sleep(Duration::from_millis(delay));
+            std::thread::sleep(Duration::from_millis(policy.delay));
 
             if !self.onf.load(std::sync::atomic::Ordering::Relaxed)
                 || self.is_game.load(std::sync::atomic::Ordering::Relaxed)
@@ -208,57 +178,64 @@ impl<'a> CpuStat<'a> {
                 continue;
             }
 
-            // 获取当前 CPU 负载
-            let load: f32 = (self.get_cpu_load() as f32) / 100.0_f32;
-            // println!("load:{}", load);
-
-            // 读取当前系统的硬件最大作为算法基准
-            let hardware_max_freq = match self.policy_freq.read_max() {
-                Ok(freq) => freq as f32,
-                Err(e) => {
+            let load = self.get_cpu_load();
+            let current_max = match self.policy_freq.read_max() {
+                Ok(freq) => freq,
+                Err(error) => {
                     if let Ok(mut log) = self.logger_handle.lock() {
-                        log.error(format!("读取max_freq失败 错误:{}", e));
+                        log.error(format!("读取 max_freq 失败: {error}"));
                     }
-                    200000.0 // 降级默认值值
+                    continue;
                 }
             };
 
-            //核心 DVFS 调频算法
-            // 目标频率 = 硬件最大频率 * 当前负载 * 放大系数
-            let mut target_freq = hardware_max_freq * load * margin;
-
-            // 将目标频率限制在当前模式配置文件所允许的 [min_limit, max_limit] 区间内
-            target_freq = target_freq.clamp(min_limit, max_limit);
-
-            // 设定下发给系统的参数
-            // 通常 max 设为算出来的目标频率，min 设为配置下限（允许系统在无负载时自行降频）
-            // 如果你的目的是“锁死频率”，则可以将 target_min 也设为 target_freq
-            let target_max = target_freq as u32;
-            let target_min = min_limit as u32;
-
-            // 计算freq差值
-            let diff_freq = target_max.abs_diff(hardware_max_freq as u32);
-
-            // 差值太低,不管它
-            if diff_freq < diff {
-                continue;
-            }
-
-            // println!("{}:{}", target_min, target_max);
-
-            let freq = (target_min, target_max);
-
-            // 发送事件
-            let result = self.tx.send(Event::SetFreq((self.from as u8, freq)));
-
-            match result {
-                Ok(_) => {}
-                Err(e) => {
-                    if let Ok(mut log) = self.logger_handle.lock() {
-                        log.error(format!("发送频率设置事件失败 错误:{}", e));
-                    }
+            if let Some(limits) = calculate_target_limits(load, current_max, &policy)
+                && let Err(error) = self.tx.send(Event::SetFreq((self.from as u8, limits)))
+            {
+                if let Ok(mut log) = self.logger_handle.lock() {
+                    log.error(format!("发送频率设置事件失败: {error}"));
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_policy() -> data::MPolicy {
+        data::MPolicy {
+            delay: 400,
+            max_freq: 3_000_000,
+            min_freq: 384_000,
+            can_boost_freq: 1_000_000,
+            boost_freq: 2_400_000,
+            margin: 2.0,
+            diff: 70_000,
+            governor: "walt".to_string(),
+            sleep_freq: 960_000,
+        })
+    }
+
+    pub const fn policy_id(&self) -> usize {
+        self.policy_id
+    }
+
+    #[test]
+    fn target_uses_mode_max_instead_of_current_cap() {
+        let policy = test_policy();
+        assert_eq!(
+            calculate_target_limits(50, 960_000, &policy),
+            Some((384_000, 3_000_000))
+        );
+    }
+
+    #[test]
+    fn target_skips_small_changes() {
+        let mut policy = test_policy();
+        policy.margin = 1.0;
+        policy.diff = 100_000;
+        assert_eq!(calculate_target_limits(50, 1_550_000, &policy), None);
     }
 }
