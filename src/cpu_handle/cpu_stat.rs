@@ -82,7 +82,7 @@ impl<'a> CpuStat<'a> {
             onf,
             is_game,
             config,
-        }
+        })
     }
 
     fn get_cpu_load(&mut self) -> u32 {
@@ -198,6 +198,10 @@ impl<'a> CpuStat<'a> {
             }
         }
     }
+
+    pub const fn policy_id(&self) -> usize {
+        self.policy_id
+    }
 }
 
 #[cfg(test)]
@@ -215,11 +219,7 @@ mod tests {
             diff: 70_000,
             governor: "walt".to_string(),
             sleep_freq: 960_000,
-        })
-    }
-
-    pub const fn policy_id(&self) -> usize {
-        self.policy_id
+        }
     }
 
     #[test]
