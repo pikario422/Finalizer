@@ -231,10 +231,29 @@ pub struct GameList {
     pub listvalue: Vec<ListValue>,
 }
 
+impl GameList {
+    pub fn validate(&self) -> Result<(), String> {
+        for (index, entry) in self.listvalue.iter().enumerate() {
+            if entry.pkg.trim().is_empty() {
+                return Err(format!("game entry {index} has an empty package name"));
+            }
+            if let Some(mode) = entry.mode.as_deref() {
+                let normalized = mode.trim().to_ascii_lowercase();
+                if normalized != "hardware" && RuntimeMode::parse(&normalized).is_none() {
+                    return Err(format!("game entry {index} has invalid mode '{mode}'"));
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 #[derive(Deserialize, Debug, Clone)]
 pub struct ListValue {
     pub pkg: String,
     pub name: String,
+    #[serde(default)]
+    pub mode: Option<String>,
 }
 
 #[test]
@@ -311,5 +330,23 @@ mod validation_tests {
         config.mode.power.policy[0].min_freq = 3_000_000;
         let error = config.validate().unwrap_err();
         assert!(error.contains("powersave policy 0"));
+    }
+
+    #[test]
+    fn validates_game_profiles() {
+        let valid: GameList = toml::from_str(
+            r#"
+                [[listvalue]]
+                pkg = "com.example.game"
+                name = "Example"
+                mode = " Performance "
+            "#,
+        )
+        .unwrap();
+        assert!(valid.validate().is_ok());
+
+        let mut invalid = valid;
+        invalid.listvalue[0].mode = Some("turbo".to_string());
+        assert!(invalid.validate().unwrap_err().contains("invalid mode"));
     }
 }

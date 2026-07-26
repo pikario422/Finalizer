@@ -194,6 +194,7 @@ pub struct Policy {
     hardware_min: u32,
     hardware_max: u32,
     original_governor: String,
+    available_frequencies: Vec<u32>,
 }
 
 impl Policy {
@@ -246,6 +247,18 @@ impl Policy {
         let hardware_min = read_frequency_path(&hardware_min_path)?;
         let hardware_max = read_frequency_path(&hardware_max_path)?;
         let original_governor = read_text_path(&governor_path)?;
+        let available_path = format!(
+            "/sys/devices/system/cpu/cpufreq/policy{}/scaling_available_frequencies",
+            index
+        );
+        let mut available_frequencies = read_text_path(&available_path)
+            .unwrap_or_default()
+            .split_whitespace()
+            .filter_map(|value| value.parse::<u32>().ok())
+            .filter(|value| (hardware_min..=hardware_max).contains(value))
+            .collect::<Vec<_>>();
+        available_frequencies.sort_unstable();
+        available_frequencies.dedup();
 
         Ok(Self {
             max_freq: max_file,
@@ -254,6 +267,7 @@ impl Policy {
             hardware_min,
             hardware_max,
             original_governor,
+            available_frequencies,
         })
     }
 
@@ -282,6 +296,15 @@ impl Policy {
 
     pub const fn hardware_limits(&self) -> (u32, u32) {
         (self.hardware_min, self.hardware_max)
+    }
+
+    pub fn round_up_frequency(&self, target: u32) -> u32 {
+        self.available_frequencies
+            .iter()
+            .copied()
+            .find(|frequency| *frequency >= target)
+            .or_else(|| self.available_frequencies.last().copied())
+            .unwrap_or(target)
     }
 
     fn restore_hardware_state(&mut self) -> io::Result<()> {

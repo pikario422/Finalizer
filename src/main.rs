@@ -120,6 +120,10 @@ fn main() {
             return;
         }
     };
+    if let Err(error) = game_list.validate() {
+        log.error(format!("游戏列表校验失败: {error}"));
+        return;
+    }
 
     log.info(format!(
         "启动: 配置={} v{}, 作者={}, 日志={}",
@@ -142,12 +146,15 @@ fn main() {
     };
     let initial_screen_on = utils::monitor_screen_status();
     let initial_window = utils::get_now_top_window_pkg_name();
-    let initial_is_game = state::is_whitelisted(&initial_window, &game_list).is_some();
+    let initial_game_entry = state::is_whitelisted(&initial_window, &game_list);
+    let initial_is_game = initial_game_entry.is_some();
+    let initial_game_profile = state::game_profile_index(initial_game_entry);
 
     let logger_handle = Arc::new(Mutex::new(log));
     let mode = Arc::new(AtomicUsize::new(initial_mode.index()));
     let onf = Arc::new(AtomicBool::new(initial_screen_on));
     let is_game = Arc::new(AtomicBool::new(initial_is_game));
+    let game_profile = Arc::new(AtomicUsize::new(initial_game_profile));
     let (tx, rx) = mpsc::channel();
 
     let shutdown_tx = tx.clone();
@@ -214,6 +221,7 @@ fn main() {
         initial_screen_on,
         initial_is_game,
         initial_mode,
+        initial_game_profile,
     )) {
         if let Ok(mut log) = logger_handle.lock() {
             log.error(format!("发送初始调度状态失败: {error}"));
@@ -282,6 +290,7 @@ fn main() {
         is_game.clone(),
         logger_handle.clone(),
         mode.clone(),
+        game_profile.clone(),
         tx.clone(),
     );
     if let Err(error) = std::thread::Builder::new()
@@ -296,6 +305,7 @@ fn main() {
         is_game,
         onf,
         mode,
+        game_profile,
         game_list,
         logger_handle.clone(),
         tx,

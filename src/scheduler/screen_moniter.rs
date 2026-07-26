@@ -18,6 +18,7 @@ pub struct Moniter {
     is_game: Arc<AtomicBool>,
     logger_handle: Arc<Mutex<crate::logger::Logger>>,
     mode: Arc<AtomicUsize>,
+    game_profile: Arc<AtomicUsize>,
     tx: mpsc::Sender<manager::Event>,
 }
 
@@ -27,6 +28,7 @@ impl Moniter {
         is_game: Arc<AtomicBool>,
         logger_handle: Arc<Mutex<crate::logger::Logger>>,
         mode: Arc<AtomicUsize>,
+        game_profile: Arc<AtomicUsize>,
         tx: mpsc::Sender<manager::Event>,
     ) -> Self {
         Self {
@@ -34,6 +36,7 @@ impl Moniter {
             is_game,
             logger_handle,
             mode,
+            game_profile,
             tx,
         }
     }
@@ -51,6 +54,7 @@ impl Moniter {
                 screen_status,
                 self.is_game.load(Ordering::Relaxed),
                 mode,
+                self.game_profile.load(Ordering::Relaxed),
             ) {
                 if let Ok(mut log) = self.logger_handle.lock() {
                     let previous = if previous_status == Some(true) {
