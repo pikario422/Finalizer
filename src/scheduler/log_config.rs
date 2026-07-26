@@ -60,7 +60,7 @@ impl LogConfigMonitor {
                 }
                 Err(error) => {
                     let message = error.to_string();
-                    if last_error.as_deref() != Some(&message) {
+                    if last_error.as_deref() != Some(message.as_str()) {
                         if let Ok(mut logger) = self.logger_handle.lock() {
                             logger.warn(format!("重新读取日志配置失败: {message}"));
                         }
