@@ -1,164 +1,149 @@
+# 骁龙8e 真机适配 Finalizer 完整调度配置【实测频点完整版】
+# 硬件信息：
+# policy0: cpu0~5 6颗Oryon Performance性能核 上限3532800kHz
+# policy6: cpu6~7 2颗Oryon Prime超大核 完整频点1017600~4320000kHz
+# 性能核可用频点(kHz):384000 556800 748800 960000 1152000 1363200
+# 1555200 1785600 1996800 2227200 2400000 2745600 2918400 3072000 3321600 3532800
+# 超大核可用频点(kHz):1017600 1209600 1401600 1689600 1958400 2246400 2438400
+# 2649600 2841600 3072000 3283200 3513600 3801600 4089600 4204800 4320000
 [name]
-name = "8100_MAX"
-version = "3.0"
-author = "ShenEternity"
+name = "SD8e"
+version = "2.1-full-freq"
+author = "pikario"
 
+# 日志级别：日常info，调试开debug
+[log]
+level = "info"
+
+# 内核调频集群绑定（硬件架构不变）
 [[policy]]
 from = 0
-to = 3
+to = 5
 
 [[policy]]
-from = 4
-to = 6
-
-[[policy]]
-from = 7
+from = 6
 to = 7
 
-[mode]
+# ---------------------------
+# Power 省电模式（待机/社交/短视频，极致续航）
+# 超大核限制峰值3072000，仅在低频状态触发boost
+# ---------------------------
 [mode.power]
 idle_governor = "menu"
+
+# policy0 0~5 性能核集群
 [[mode.power.policy]]
 delay = 600
-max_freq = 2000000
-min_freq = 500000
-can_boost_freq = 1000000
-boost_freq = 2000000
+max_freq = 2400000
+min_freq = 384000
+can_boost_freq = 960000
+boost_freq = 1785600
 margin = 2.1
 diff = 70000
-governor = "sugov_ext"
-sleep_freq = 1000000
+governor = "walt"
+sleep_freq = 748800
 
+# policy6 6~7 Prime超大核集群（重度保守锁频）
 [[mode.power.policy]]
-delay = 600
-max_freq = 2250000
-min_freq = 500000
-can_boost_freq = 1000000
-boost_freq = 2000000
-margin = 2.2
-diff = 70000
-governor = "sugov_ext"
-sleep_freq = 1000000
+delay = 700
+max_freq = 3072000
+min_freq = 1017600
+can_boost_freq = 1401600
+boost_freq = 2438400
+margin = 1.8
+diff = 90000
+governor = "walt"
+sleep_freq = 1017600
 
-
-[[mode.power.policy]]
-delay = 600
-max_freq = 200000
-min_freq = 500000
-can_boost_freq = 1000000
-boost_freq = 2000000
-margin = 2.0
-diff = 70000
-governor = "sugov_ext"
-sleep_freq = 1000000
-
-
-
+# ---------------------------
+# Blan 均衡模式（日常主力/中度游戏，续航性能平衡）
+# 超大核上限3801600，适度放开，调度轻度保守
+# ---------------------------
 [mode.blan]
 idle_governor = "menu"
+
+# policy0 性能核集群
 [[mode.blan.policy]]
 delay = 400
-max_freq = 2000000
-min_freq = 500000
-can_boost_freq = 1000000
-boost_freq = 2000000
+max_freq = 2918400
+min_freq = 384000
+can_boost_freq = 1152000
+boost_freq = 2400000
 margin = 2.3
 diff = 70000
-governor = "sugov_ext"
-sleep_freq = 1000000
+governor = "walt"
+sleep_freq = 960000
 
+# policy6 Prime超大核集群
 [[mode.blan.policy]]
-delay = 400
-max_freq = 2650000
-min_freq = 500000
-can_boost_freq = 1000000
-boost_freq = 2000000
-margin = 2.3
-diff = 70000
-governor = "sugov_ext"
-sleep_freq = 1000000
-
-[[mode.blan.policy]]
-delay = 400
-max_freq = 2650000
-min_freq = 500000
-can_boost_freq = 1000000
-boost_freq = 2000000
+delay = 450
+max_freq = 3801600
+min_freq = 1017600
+can_boost_freq = 1958400
+boost_freq = 2841600
 margin = 2.0
-diff = 70000
-governor = "sugov_ext"
-sleep_freq = 1000000
+diff = 90000
+governor = "walt"
+sleep_freq = 1017600
 
-
+# ---------------------------
+# Perf 性能模式（高画质手游/视频剪辑，长时间重度负载）
+# 超大核上限3801600，控制长时间重载温升
+# ---------------------------
 [mode.perf]
 idle_governor = "menu"
+
+# policy0 性能核集群
 [[mode.perf.policy]]
 delay = 200
-max_freq = 2000000
-min_freq = 500000
-can_boost_freq = 1000000
-boost_freq = 2000000
+max_freq = 3321600
+min_freq = 384000
+can_boost_freq = 960000
+boost_freq = 2745600
 margin = 2.8
 diff = 70000
-governor = "sugov_ext"
-sleep_freq = 1000000
+governor = "walt"
+sleep_freq = 960000
 
+# policy6 Prime超大核集群
 [[mode.perf.policy]]
-delay = 200
-max_freq = 2850000
-min_freq = 500000
-can_boost_freq = 1000000
-boost_freq = 2000000
-margin = 2.8
-diff = 70000
-governor = "sugov_ext"
-sleep_freq = 1000000
+delay = 220
+max_freq = 3801600
+min_freq = 1017600
+can_boost_freq = 1689600
+boost_freq = 3513600
+margin = 2.6
+diff = 90000
+governor = "walt"
+sleep_freq = 1017600
 
-[[mode.perf.policy]]
-delay = 200
-max_freq = 2850000
-min_freq = 500000
-can_boost_freq = 1000000
-boost_freq = 2000000
-margin = 2.8
-diff = 70000
-governor = "sugov_ext"
-sleep_freq = 1000000
-
-
-
+# ---------------------------
+# Fast 极限电竞/跑分模式（短时使用，解锁4.32GHz满睿频）
+# 超大核max拉满4320000，boost触发门槛最低，瞬时爆发最强
+# ---------------------------
 [mode.fast]
 idle_governor = "menu"
+
+# policy0 性能核集群
 [[mode.fast.policy]]
 delay = 100
-max_freq = 2000000
-min_freq = 500000
-can_boost_freq = 1000000
-boost_freq = 2000000
+max_freq = 3532800
+min_freq = 384000
+can_boost_freq = 748800
+boost_freq = 2918400
 margin = 3.0
 diff = 70000
-governor = "sugov_ext"
-sleep_freq = 1000000
+governor = "walt"
+sleep_freq = 960000
 
+# policy6 Prime超大核集群（完全解锁4320000满频）
 [[mode.fast.policy]]
-delay = 100
-max_freq = 2850000
-min_freq = 500000
-can_boost_freq = 1000000
-boost_freq = 2000000
-margin = 3.0
-diff = 70000
-governor = "sugov_ext"
-sleep_freq = 1000000
-
-[[mode.fast.policy]]
-delay = 100
-max_freq = 2850000
-min_freq = 500000
-can_boost_freq = 1000000
-boost_freq = 2000000
-margin = 3.0
-diff = 70000
-governor = "sugov_ext"
-sleep_freq = 1000000
-
+delay = 120
+max_freq = 4320000
+min_freq = 1017600
+can_boost_freq = 1401600
+boost_freq = 4089600
+margin = 2.8
+diff = 90000
+governor = "walt"
+sleep_freq = 1017600
