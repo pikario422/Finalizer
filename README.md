@@ -13,6 +13,7 @@ Finalizer 是一个用 Rust 编写的轻量守护进程/工具，面向 Android 
 - 运行时调整模式
 - 熄屏停止大部分工作
 - 白名单应用关闭
+- WebUI 管理运行模式、日志和配置文件
 
 
 贡献
@@ -30,6 +31,18 @@ Finalizer 是一个用 Rust 编写的轻量守护进程/工具，面向 Android 
 --------
 
 如需更多信息，请在仓库中创建 Issue 或联系维护者（仓库 README/元数据中可能含有维护者信息）。
+
+WebUI
+--------
+
+在支持 KernelSU WebUI bridge 的模块管理器中打开 Finalizer，可使用以下功能：
+
+- 查看运行状态并切换省电、均衡、性能和极速模式。
+- 调整日志级别，查看、筛选、暂停或清空实时日志。
+- 在“调度配置”Tab 中编辑 `config.toml`，可选择保存或保存并重启。
+- 在“游戏配置”Tab 中编辑 `game_list.toml`；保存后会在下一次轮询时自动热重载，通常不超过 5 秒，无需重启 Finalizer。
+
+WebUI 保存配置前会调用 Finalizer 校验 TOML 内容。校验失败时不会覆盖当前配置；保存成功前，原文件会分别备份为 `config.toml.webui.bak` 或 `game_list.toml.webui.bak`。
 
 配置字段说明
 --------
@@ -61,7 +74,22 @@ Finalizer 是一个用 Rust 编写的轻量守护进程/工具，面向 Android 
 有关完整示例，请参阅仓库内的 `debug/config_bak.toml` 示例配置。
 
 游戏列表配置
-- `listvalue` 列表元素
-    - `pkg` 应用包名
-    - `name` 软件名 (可以随便写)
+--------
+
+`game_list.toml` 使用 `[[listvalue]]` 定义游戏或需要特殊策略的应用：
+
+- `pkg`：应用包名，不能为空；当前前台窗口包含该值时视为匹配。
+- `name`：用于日志显示的应用名称。
+- `mode`：可选，指定应用匹配时使用的策略。支持 `powersave`、`balance`、`performance`、`fast` 和 `hardware`；省略时等同于 `hardware`，即恢复硬件频率范围。
+
+示例：
+
+```toml
+[[listvalue]]
+pkg = "com.example.game"
+name = "示例游戏"
+mode = "performance"
+```
+
+运行中的 Finalizer 每 5 秒检查一次 `game_list.toml` 是否变化。新文件解析或校验失败时会继续使用上一份有效配置，并在日志中记录错误。
 
