@@ -1,6 +1,7 @@
 [[listvalue]]
 pkg = "com.sheneternity"
 name = "ShenEternity"
+mode = "balance"
 [[listvalue]]
 pkg = "com.sheneternity"
 name = "ShenEternity"
