@@ -3,6 +3,7 @@
 SCRIPT_DIR=${0%/*}
 MODDIR=${SCRIPT_DIR%/*}
 CONFIG_FILE="$MODDIR/config/config.toml"
+GAME_LIST_FILE="$MODDIR/config/game_list.toml"
 MODE_FILE="$MODDIR/config/config.txt"
 LOG_FILE="$MODDIR/log/log.log"
 BINARY="$MODDIR/system/bin/finalizer"
@@ -47,6 +48,13 @@ validate_config_file() {
     [ -z "$level" ] || validate_level "$level" || return 1
     [ -x "$BINARY" ] || return 1
     "$BINARY" --validate-config "$file" >/dev/null 2>&1
+}
+
+validate_game_list_file() {
+    file=$1
+    [ -s "$file" ] || return 1
+    [ -x "$BINARY" ] || return 1
+    "$BINARY" --validate-game-list "$file" >/dev/null 2>&1
 }
 
 backup_config() {
@@ -128,6 +136,31 @@ write_config() {
     echo "saved"
 }
 
+write_game_list() {
+    payload=$1
+    [ -n "$payload" ] || fail "游戏列表内容为空"
+    tmp="$GAME_LIST_FILE.webui.$$"
+
+    printf '%s' "$payload" | base64 -d > "$tmp" 2>/dev/null || {
+        rm -f "$tmp"
+        fail "游戏列表解码失败"
+    }
+    validate_game_list_file "$tmp" || {
+        rm -f "$tmp"
+        fail "游戏列表格式或模式无效"
+    }
+    cp "$GAME_LIST_FILE" "$GAME_LIST_FILE.webui.bak" || {
+        rm -f "$tmp"
+        fail "备份游戏列表失败"
+    }
+    cat "$tmp" > "$GAME_LIST_FILE" || {
+        rm -f "$tmp"
+        fail "写入游戏列表失败"
+    }
+    rm -f "$tmp"
+    echo "saved"
+}
+
 restart_finalizer() {
     pids=$(pidof finalizer 2>/dev/null)
     if [ -n "$pids" ]; then
@@ -202,6 +235,12 @@ case "${1:-}" in
         ;;
     write-config)
         write_config "${2:-}"
+        ;;
+    read-game-list)
+        cat "$GAME_LIST_FILE" || fail "读取游戏列表失败"
+        ;;
+    write-game-list)
+        write_game_list "${2:-}"
         ;;
     restart)
         restart_finalizer

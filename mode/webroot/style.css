@@ -332,7 +332,55 @@ select {
   accent-color: var(--accent);
 }
 
-#configEditor {
+.config-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--line);
+}
+
+.config-tab {
+  min-height: 42px;
+  padding: 0 16px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  background: transparent;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.config-tab:hover {
+  color: var(--text);
+}
+
+.config-tab[aria-selected="true"] {
+  border-bottom-color: var(--accent);
+  color: var(--accent-strong);
+}
+
+.config-tab-panel {
+  padding-top: 16px;
+}
+
+.config-tab-panel[hidden] {
+  display: none;
+}
+
+.editor-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.editor-file {
+  color: var(--muted);
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.config-editor {
   display: block;
   width: 100%;
   height: clamp(340px, 52vh, 620px);
@@ -348,7 +396,7 @@ select {
   tab-size: 2;
 }
 
-#configEditor:focus,
+.config-editor:focus,
 button:focus-visible,
 select:focus-visible {
   outline: 2px solid var(--blue);
@@ -451,6 +499,13 @@ select:focus-visible {
   .config-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
+  }
+
+  .config-tab {
+    flex: 1;
+    min-width: 0;
+    padding-right: 8px;
+    padding-left: 8px;
   }
 
   .config-actions .primary-button {

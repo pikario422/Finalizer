@@ -104,16 +104,65 @@
       <section class="panel config-panel" aria-labelledby="configHeading">
         <div class="section-heading">
           <div>
-            <p class="section-kicker">CONFIG.TOML</p>
-            <h2 id="configHeading">高级配置</h2>
+            <p class="section-kicker">CONFIGURATION</p>
+            <h2 id="configHeading">配置文件</h2>
           </div>
-          <span id="configState" class="inline-status" aria-live="polite">未加载</span>
         </div>
-        <textarea id="configEditor" spellcheck="false" aria-label="Finalizer TOML 配置"></textarea>
-        <div class="config-actions">
-          <button id="reloadConfig" class="secondary-button" type="button">重新载入</button>
-          <button id="saveConfig" class="secondary-button" type="button">保存</button>
-          <button id="saveRestart" class="primary-button" type="button">保存并重启</button>
+
+        <div class="config-tabs" role="tablist" aria-label="配置文件">
+          <button
+            id="schedulerConfigTab"
+            class="config-tab"
+            type="button"
+            role="tab"
+            aria-selected="true"
+            aria-controls="schedulerConfigPanel"
+          >调度配置</button>
+          <button
+            id="gameListTab"
+            class="config-tab"
+            type="button"
+            role="tab"
+            aria-selected="false"
+            aria-controls="gameListPanel"
+            tabindex="-1"
+          >游戏配置</button>
+        </div>
+
+        <div
+          id="schedulerConfigPanel"
+          class="config-tab-panel"
+          role="tabpanel"
+          aria-labelledby="schedulerConfigTab"
+        >
+          <div class="editor-heading">
+            <span class="editor-file">config.toml</span>
+            <span id="configState" class="inline-status" aria-live="polite">未加载</span>
+          </div>
+          <textarea id="configEditor" class="config-editor" spellcheck="false" aria-label="Finalizer 调度配置"></textarea>
+          <div class="config-actions">
+            <button id="reloadConfig" class="secondary-button" type="button">重新载入</button>
+            <button id="saveConfig" class="secondary-button" type="button">保存</button>
+            <button id="saveRestart" class="primary-button" type="button">保存并重启</button>
+          </div>
+        </div>
+
+        <div
+          id="gameListPanel"
+          class="config-tab-panel"
+          role="tabpanel"
+          aria-labelledby="gameListTab"
+          hidden
+        >
+          <div class="editor-heading">
+            <span class="editor-file">game_list.toml</span>
+            <span id="gameListState" class="inline-status" aria-live="polite">未加载</span>
+          </div>
+          <textarea id="gameListEditor" class="config-editor" spellcheck="false" aria-label="Finalizer 游戏列表配置"></textarea>
+          <div class="config-actions">
+            <button id="reloadGameList" class="secondary-button" type="button">重新载入</button>
+            <button id="saveGameList" class="primary-button" type="button">保存</button>
+          </div>
         </div>
       </section>
     </main>

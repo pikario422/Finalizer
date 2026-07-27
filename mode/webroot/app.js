@@ -21,11 +21,18 @@ const elements = {
   clearLog: document.querySelector("#clearLog"),
   logViewport: document.querySelector("#logViewport"),
   autoScroll: document.querySelector("#autoScroll"),
+  configTabs: Array.from(document.querySelectorAll(".config-tab")),
+  schedulerConfigPanel: document.querySelector("#schedulerConfigPanel"),
+  gameListPanel: document.querySelector("#gameListPanel"),
   configEditor: document.querySelector("#configEditor"),
   configState: document.querySelector("#configState"),
   reloadConfig: document.querySelector("#reloadConfig"),
   saveConfig: document.querySelector("#saveConfig"),
   saveRestart: document.querySelector("#saveRestart"),
+  gameListEditor: document.querySelector("#gameListEditor"),
+  gameListState: document.querySelector("#gameListState"),
+  reloadGameList: document.querySelector("#reloadGameList"),
+  saveGameList: document.querySelector("#saveGameList"),
   toast: document.querySelector("#toast"),
 };
 
@@ -34,6 +41,7 @@ let toastTimer;
 let logPaused = false;
 let latestLog = "";
 let configDirty = false;
+let gameListDirty = false;
 let statusBusy = false;
 let logBusy = false;
 
@@ -191,6 +199,18 @@ function renderLog() {
   }
 }
 
+function setActiveConfigTab(activeTab) {
+  const tab = activeTab === "game-list" ? elements.configTabs[1] : elements.configTabs[0];
+  elements.configTabs.forEach((button) => {
+    const selected = button === tab;
+    button.setAttribute("aria-selected", String(selected));
+    button.tabIndex = selected ? 0 : -1;
+  });
+  const gameListActive = tab.id === "gameListTab";
+  elements.schedulerConfigPanel.hidden = gameListActive;
+  elements.gameListPanel.hidden = !gameListActive;
+}
+
 async function refreshLog() {
   if (logPaused || logBusy || document.hidden) return;
   logBusy = true;
@@ -233,6 +253,20 @@ async function loadConfig(force = false) {
   }
 }
 
+async function loadGameList(force = false) {
+  if (gameListDirty && !force && !window.confirm("放弃尚未保存的游戏列表修改？")) return;
+  elements.gameListState.textContent = "载入中";
+  try {
+    const result = await runApi("read-game-list");
+    elements.gameListEditor.value = result.stdout;
+    gameListDirty = false;
+    elements.gameListState.textContent = "已载入";
+  } catch (error) {
+    elements.gameListState.textContent = "载入失败";
+    showToast(error.message);
+  }
+}
+
 async function writeConfig(restart) {
   const content = elements.configEditor.value;
   if (!content.trim()) {
@@ -258,6 +292,29 @@ async function writeConfig(restart) {
     showToast(restart ? "配置已应用" : "配置已保存");
   } catch (error) {
     elements.configState.textContent = "操作失败";
+    showToast(error.message);
+  } finally {
+    buttons.forEach((button) => { button.disabled = false; });
+  }
+}
+
+async function writeGameList() {
+  const content = elements.gameListEditor.value;
+  if (!content.trim()) {
+    showToast("游戏列表不能为空");
+    return;
+  }
+
+  const buttons = [elements.reloadGameList, elements.saveGameList];
+  buttons.forEach((button) => { button.disabled = true; });
+  elements.gameListState.textContent = "保存中";
+  try {
+    await runApi("write-game-list", encodeUtf8Base64(content));
+    gameListDirty = false;
+    elements.gameListState.textContent = "已保存";
+    showToast("游戏列表已保存");
+  } catch (error) {
+    elements.gameListState.textContent = "操作失败";
     showToast(error.message);
   } finally {
     buttons.forEach((button) => { button.disabled = false; });
@@ -319,9 +376,29 @@ elements.configEditor.addEventListener("input", () => {
   configDirty = true;
   elements.configState.textContent = "未保存";
 });
+elements.gameListEditor.addEventListener("input", () => {
+  gameListDirty = true;
+  elements.gameListState.textContent = "未保存";
+});
+elements.configTabs.forEach((tab, index) => {
+  tab.addEventListener("click", () => {
+    setActiveConfigTab(tab.id === "gameListTab" ? "game-list" : "scheduler");
+  });
+  tab.addEventListener("keydown", (event) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    const nextIndex = event.key === "ArrowRight"
+      ? (index + 1) % elements.configTabs.length
+      : (index - 1 + elements.configTabs.length) % elements.configTabs.length;
+    elements.configTabs[nextIndex].focus();
+    setActiveConfigTab(elements.configTabs[nextIndex].id === "gameListTab" ? "game-list" : "scheduler");
+  });
+});
 elements.reloadConfig.addEventListener("click", () => loadConfig(false));
 elements.saveConfig.addEventListener("click", () => writeConfig(false));
 elements.saveRestart.addEventListener("click", () => writeConfig(true));
+elements.reloadGameList.addEventListener("click", () => loadGameList(false));
+elements.saveGameList.addEventListener("click", writeGameList);
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) {
     refreshStatus();
@@ -335,14 +412,17 @@ async function initialize() {
     elements.runtimeText.textContent = "WebUI 不可用";
     setControlsDisabled(true);
     elements.configEditor.disabled = true;
+    elements.gameListEditor.disabled = true;
     elements.reloadConfig.disabled = true;
     elements.saveConfig.disabled = true;
     elements.saveRestart.disabled = true;
+    elements.reloadGameList.disabled = true;
+    elements.saveGameList.disabled = true;
     elements.logViewport.innerHTML = '<div class="empty-state">请从 KernelSU 管理器打开</div>';
     return;
   }
 
-  await Promise.all([refreshStatus(), refreshLog(), loadConfig(true)]);
+  await Promise.all([refreshStatus(), refreshLog(), loadConfig(true), loadGameList(true)]);
   window.setInterval(refreshLog, 1000);
   window.setInterval(refreshStatus, 2500);
 }

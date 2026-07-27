@@ -18,10 +18,17 @@ cp -R "$ROOT_DIR/mode/." "$MODULE_DIR/"
 API="$MODULE_DIR/webroot/api.sh"
 cat > "$MODULE_DIR/system/bin/finalizer" <<'EOF'
 #!/usr/bin/env bash
-if [[ "${1:-}" == "--validate-config" ]] && ! grep -q 'invalid_value' "$2"; then
-    exit 0
-fi
-exit 1
+case "${1:-}" in
+    --validate-config)
+        ! grep -q 'invalid_value' "$2"
+        ;;
+    --validate-game-list)
+        ! grep -q 'mode = "turbo"' "$2"
+        ;;
+    *)
+        exit 1
+        ;;
+esac
 EOF
 chmod 755 "$MODULE_DIR/system/bin/finalizer"
 printf '%s\n' '[2026-07-26 18:00:00] [INFO] test log' > "$MODULE_DIR/log/log.log"
@@ -60,5 +67,43 @@ if bash "$API" write-config "$invalid_payload" >/dev/null 2>&1; then
     echo "config rejected by Rust validator was accepted" >&2
     exit 1
 fi
+
+cp "$MODULE_DIR/config/game_list.toml" "$TEST_ROOT/original-game-list.toml"
+bash "$API" read-game-list > "$TEST_ROOT/read-game-list.toml"
+cmp "$TEST_ROOT/original-game-list.toml" "$TEST_ROOT/read-game-list.toml"
+
+cat > "$TEST_ROOT/expected-game-list.toml" <<'EOF'
+[[listvalue]]
+pkg = "com.example.game"
+name = "Example Game"
+mode = "performance"
+EOF
+game_list_payload=$(base64 < "$TEST_ROOT/expected-game-list.toml" | tr -d '\n')
+bash "$API" write-game-list "$game_list_payload" >/dev/null
+cmp "$TEST_ROOT/expected-game-list.toml" "$MODULE_DIR/config/game_list.toml"
+cmp "$TEST_ROOT/original-game-list.toml" "$MODULE_DIR/config/game_list.toml.webui.bak"
+
+invalid_game_payload=$(printf 'invalid base64 %%' | base64 | tr -d '\n')
+if bash "$API" write-game-list "${invalid_game_payload}%%%" >/dev/null 2>&1; then
+    echo "invalid game list payload was accepted" >&2
+    exit 1
+fi
+cmp "$TEST_ROOT/expected-game-list.toml" "$MODULE_DIR/config/game_list.toml"
+
+sed 's/mode = "performance"/mode = "turbo"/' \
+    "$TEST_ROOT/expected-game-list.toml" > "$TEST_ROOT/rust-invalid-game-list.toml"
+invalid_game_payload=$(base64 < "$TEST_ROOT/rust-invalid-game-list.toml" | tr -d '\n')
+if bash "$API" write-game-list "$invalid_game_payload" >/dev/null 2>&1; then
+    echo "game list rejected by Rust validator was accepted" >&2
+    exit 1
+fi
+cmp "$TEST_ROOT/expected-game-list.toml" "$MODULE_DIR/config/game_list.toml"
+
+grep -q 'role="tablist"' "$MODULE_DIR/webroot/index.html"
+grep -q 'id="schedulerConfigTab"' "$MODULE_DIR/webroot/index.html"
+grep -q 'id="gameListTab"' "$MODULE_DIR/webroot/index.html"
+grep -q 'id="gameListEditor"' "$MODULE_DIR/webroot/index.html"
+grep -q 'runApi("read-game-list")' "$MODULE_DIR/webroot/app.js"
+grep -q 'runApi("write-game-list"' "$MODULE_DIR/webroot/app.js"
 
 echo "WebUI API tests passed"

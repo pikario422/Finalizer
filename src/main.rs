@@ -43,10 +43,15 @@ fn handle_cli() {
         return;
     };
 
-    if command != "--validate-config" {
-        eprintln!("未知参数: {command}");
-        process::exit(2);
-    }
+    let validation_kind = match command.as_str() {
+        "--validate-config" => "config",
+        "--validate-game-list" => "game-list",
+        _ => {
+            eprintln!("未知参数: {command}");
+            process::exit(2);
+        }
+    };
+
     let Some(path) = args.next() else {
         eprintln!("缺少配置文件路径");
         process::exit(2);
@@ -56,17 +61,35 @@ fn handle_cli() {
         process::exit(2);
     }
 
-    match data::Config::new(&path).and_then(|config| {
-        config
-            .validate()
-            .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
-    }) {
+    let result = match validation_kind {
+        "config" => data::Config::new(&path).and_then(|config| {
+            config
+                .validate()
+                .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+        }),
+        "game-list" => GameList::new(&path).and_then(|game_list| {
+            game_list
+                .validate()
+                .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+        }),
+        _ => unreachable!(),
+    };
+
+    match result {
         Ok(()) => {
-            println!("配置有效");
+            if validation_kind == "config" {
+                println!("配置有效");
+            } else {
+                println!("游戏列表有效");
+            }
             process::exit(0);
         }
         Err(error) => {
-            eprintln!("配置无效: {error}");
+            if validation_kind == "config" {
+                eprintln!("配置无效: {error}");
+            } else {
+                eprintln!("游戏列表无效: {error}");
+            }
             process::exit(1);
         }
     }
